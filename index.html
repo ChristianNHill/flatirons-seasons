@@ -1,0 +1,2148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Flatirons Seasons</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&amp;family=IBM+Plex+Mono:wght@400&amp;family=Inter:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F2F3F4; --dim:rgba(255,255,255,.56); --hair:rgba(255,255,255,.16);
+    --accent:#C86AA8;
+    --display:"Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --body:Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  html, body { margin:0; height:100%; background:#000; overflow:hidden; color:var(--paper);
+    font-family:var(--body); -webkit-font-smoothing:antialiased; }
+  canvas#gl { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+  .ui { position:fixed; inset:0; pointer-events:none; z-index:2; }
+  .ui > * { position:absolute; pointer-events:auto; }
+
+  .name { left:28px; top:24px; font-family:var(--display); font-weight:600; font-size:17px;
+    letter-spacing:-.01em; text-shadow:0 1px 14px rgba(0,0,0,.5); }
+
+  /* The tabs have to stay reachable with a pane open, or switching means closing first.
+     On a wide screen they step aside by the width of the sheet; on a narrow one the sheet
+     is the whole width, so they ride on top of it and become its header instead. */
+  .tools { right:28px; top:24px; display:flex; flex-direction:column; align-items:flex-end;
+    gap:13px; z-index:10; transition:transform .5s cubic-bezier(.4,0,.2,1); }
+  .tabrow { display:flex; gap:10px; }
+
+  /* the ways out of the page, kept to a line of type above the ways further in */
+  .links { display:flex; gap:20px; }
+  .links a { font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--dim); text-decoration:none; text-shadow:0 1px 14px rgba(0,0,0,.5);
+    transition:color .25s ease; }
+  .links a:hover { color:var(--paper); }
+  .links .arw { opacity:.6; }
+  .links a:hover .arw { opacity:1; color:var(--accent); }
+  body.sheet-open .tools { transform:translateX(calc(-1 * min(580px, 100vw))); }
+  .mini { display:inline-flex; align-items:center; gap:8px; font-family:var(--mono); font-size:11px;
+    letter-spacing:.06em; text-transform:uppercase; background:rgba(10,12,16,.4);
+    border:1px solid var(--hair); color:var(--dim); padding:7px 12px; border-radius:2px;
+    cursor:pointer; backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px);
+    transition:color .2s ease, border-color .2s ease; }
+  .mini:hover { color:var(--paper); border-color:rgba(255,255,255,.34); }
+  .mini[disabled] { opacity:.45; cursor:default; }
+  .mini .dot { width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.3); }
+  .mini[aria-pressed="true"] .dot { background:var(--accent); }
+  .mini .mark { font-size:12px; line-height:1; }
+  .mini sup { font-size:8.5px; color:var(--accent); top:-.6em; position:relative; margin-left:2px; }
+
+  .foot { left:28px; bottom:24px; max-width:52ch; }
+  .hint { font-family:var(--mono); font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--dim); text-shadow:0 1px 14px rgba(0,0,0,.5); }
+  .credit { font-family:var(--mono); font-size:10px; line-height:1.6; letter-spacing:.02em;
+    color:rgba(255,255,255,.34); margin-top:9px; }
+  .credit a { color:inherit; text-decoration:none; border-bottom:1px solid rgba(255,255,255,.2); }
+  .credit a:hover { color:var(--paper); }
+
+  /* Top left, under the name, because that is the only quiet corner of this page. The bottom
+     left carries the hint and the credits, the bottom right the season names, the top right
+     the links and tabs - a panel this size in any of them covers something you need to read.
+     The iframe is Spotify's and cannot be restyled, so it is built only when opened. */
+  .player { left:28px; top:62px; display:flex; flex-direction:column;
+    align-items:flex-start; gap:10px; }
+  .player .mini .mark { transition:transform .3s ease; }
+  .player.open .mini .mark { transform:rotate(45deg); }
+  .playerBox { width:min(300px, calc(100vw - 56px)); border-radius:12px; overflow:hidden;
+    box-shadow:0 12px 44px rgba(0,0,0,.5); opacity:0; transform:translateY(10px);
+    transition:opacity .4s ease, transform .4s cubic-bezier(.4,0,.2,1); }
+  .player.open .playerBox { opacity:1; transform:none; }
+  .playerBox iframe { display:block; width:100%; height:152px; border:0; }   /* height set per source */
+  /* Narrow screens have no quiet corner at all, so it starts closed there and the visitor
+     opens it if they want it. */
+  @media (max-width: 720px) { .player { top:56px; } }
+
+  .seasons { right:28px; bottom:24px; display:flex; gap:22px; }
+  .seasons button { all:unset; cursor:pointer; font-family:var(--mono); font-size:12px;
+    letter-spacing:.09em; text-transform:uppercase; color:rgba(255,255,255,.42);
+    transition:color .5s ease; text-shadow:0 1px 14px rgba(0,0,0,.5); }
+  .seasons button:hover { color:rgba(255,255,255,.8); }
+  .seasons button[aria-pressed="true"] { color:var(--paper); }
+  .seasons button[aria-pressed="true"]::after { content:''; display:block; height:1px;
+    background:var(--accent); margin-top:6px; }
+
+  .loading { left:50%; top:50%; transform:translate(-50%,-50%); font-family:var(--mono);
+    font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim);
+    transition:opacity .8s; }
+
+
+  /* three panes behind three tabs: who, what, how */
+  .pane { display:none; overflow-y:auto; flex:1; padding:0 34px 44px; }
+  .pane.on { display:block; }
+  .pane.work-pane { padding:0; }
+
+  .hero { font-family:var(--display); font-weight:600; font-size:clamp(23px,2.4vw,29px);
+    letter-spacing:-.02em; line-height:1.18; margin:26px 0 0; }
+  .rot { color:var(--accent); display:inline-block; min-width:5.5ch;
+    transition:opacity .28s ease; }
+  .about p { font-size:14px; line-height:1.7; color:rgba(255,255,255,.72); margin:18px 0 0;
+    max-width:44ch; }
+  .about .lead { color:rgba(255,255,255,.86); }
+
+  .how-intro { font-size:14px; line-height:1.7; color:rgba(255,255,255,.72); margin:26px 0 0;
+    max-width:44ch; }
+  .principles { list-style:none; margin:30px 0 0; padding:0; }
+  .principle { display:flex; gap:16px; align-items:flex-start; padding:18px 0;
+    border-top:1px solid rgba(255,255,255,.09); }
+  .principle img { flex:0 0 42px; width:42px; height:42px; object-fit:contain; display:block;
+    filter:brightness(0) invert(1); opacity:.82; }
+  .principle h3 { font-family:var(--display); font-weight:500; font-size:15px;
+    letter-spacing:-.01em; margin:0 0 5px; }
+  .principle p { font-size:13px; line-height:1.6; color:rgba(255,255,255,.66); margin:0;
+    max-width:38ch; }
+  .principle p.quote { font-style:italic; color:rgba(255,255,255,.74); }
+
+  /* the work waits behind one control, and each piece waits again behind its own */
+  .sheet { position:fixed; top:0; right:0; bottom:0; width:min(580px,100%); z-index:9;
+    background:rgba(8,10,13,.84); backdrop-filter:blur(24px) saturate(1.1);
+    -webkit-backdrop-filter:blur(24px) saturate(1.1); border-left:1px solid var(--hair);
+    color:var(--paper); display:flex; flex-direction:column;
+    transform:translateX(100%); transition:transform .5s cubic-bezier(.4,0,.2,1); }
+  .sheet.open { transform:none; }
+  .sheet-top { display:flex; align-items:baseline; justify-content:space-between; gap:20px;
+    padding:30px 34px 20px; border-bottom:1px solid var(--hair); }
+  .sheet-top .label { font-family:var(--mono); font-size:11px; letter-spacing:.09em;
+    text-transform:uppercase; color:var(--dim); margin:0; }
+  .sheet-top .label sup { color:var(--accent); font-size:9px; top:-.6em; position:relative; margin-left:4px; }
+  .close { background:none; border:0; color:var(--dim); font-family:var(--mono); font-size:17px;
+    cursor:pointer; line-height:1; padding:0; }
+  .close:hover { color:var(--paper); }
+  .works { list-style:none; margin:0; padding:0 34px 40px; overflow-y:auto; flex:1; }
+  .work { border-bottom:1px solid rgba(255,255,255,.09); }
+  .work-head { display:flex; align-items:center; gap:14px; padding:14px 0; cursor:pointer; }
+  .work-thumb { flex:0 0 60px; width:60px; height:45px; object-fit:cover; border-radius:3px;
+    background:rgba(255,255,255,.06); display:block; filter:saturate(.5) brightness(.82);
+    transition:filter .3s ease; }
+  .work-head:hover .work-thumb, .work[data-open="1"] .work-thumb { filter:none; }
+  .work-title { font-family:var(--display); font-weight:500; font-size:16px; letter-spacing:-.01em;
+    line-height:1.25; flex:1; transition:color .2s ease; }
+  .work-head:hover .work-title { color:var(--accent); }
+  .work-mark { font-family:var(--mono); font-size:13px; color:var(--dim); line-height:1; }
+  .work-body { display:none; padding:0 0 22px 74px; }
+  .work-media { position:relative; display:block; aspect-ratio:4/3; width:100%;
+    overflow:hidden; border-radius:4px; background:rgba(255,255,255,.05); margin:2px 0 16px;
+    cursor:pointer; }
+  .work-media > img { width:100%; height:100%; object-fit:cover; display:block;
+    transition:filter .3s ease; }
+  .work-media[data-href]:hover > img { filter:brightness(1.06); }
+  .work-media[data-ch-fx] { cursor:crosshair; }
+  .work[data-open="1"] .work-body { display:block; }
+  .work[data-open="1"] .work-mark { color:var(--accent); }
+  .work-tag { font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; color:var(--dim);
+    display:block; margin-bottom:10px; }
+  .work-desc { font-size:14px; line-height:1.68; color:rgba(255,255,255,.74); margin:0; max-width:42ch; }
+  .work-meta { margin-top:16px; font-family:var(--mono); font-size:11px;
+    display:flex; flex-wrap:wrap; gap:18px; }
+  .work-meta a { color:var(--paper); text-decoration:none; border-bottom:1px solid var(--hair);
+    padding-bottom:2px; transition:color .2s ease, border-color .2s ease; }
+  .work-meta a:hover { color:var(--accent); border-color:var(--accent); }
+  .work-meta .arw { opacity:.6; }
+  .work-meta a:hover .arw { opacity:1; }
+
+  @media (max-width:640px) {
+    .name { left:16px; top:14px; font-size:15px; }
+    .tools { right:16px; top:14px; gap:9px; } .foot { display:none; }
+    .links { gap:13px; } .links a { font-size:9.5px; letter-spacing:.04em; }
+    body.sheet-open .tools { transform:none; }
+    body.sheet-open .name { opacity:0; }
+    .sheet-top .label { display:none; } .sheet-top { min-height:54px; }
+    .seasons { right:16px; bottom:14px; gap:16px; }
+    .sheet-top, .works { padding-left:22px; padding-right:22px; }
+  }
+</style>
+<!-- importmap: local copy for development, CDN in production. Must precede any module script. -->
+<script>
+  (function(){
+    var local = location.protocol === 'file:' || /[?&]local\b/.test(location.search);
+    var src = local ? './node_modules/three/build/three.module.min.js'
+                    : 'https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.min.js';
+    var s = document.createElement('script'); s.type = 'importmap';
+    s.textContent = JSON.stringify({ imports: { three: src } });
+    document.currentScript.after(s);
+  })();
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="ui">
+  <div class="name">Chris Hill</div>
+  <div class="tools">
+    <nav class="links">
+      <a href="https://chrisnhill.com/wp-content/uploads/2026/01/Chris-Hill-FlowCV-Resume-20260129.pdf" target="_blank" rel="noopener">CV <span class="arw">&#8599;</span></a>
+      <a href="https://github.com/ChristianNHill?tab=repositories" target="_blank" rel="noopener">GitHub <span class="arw">&#8599;</span></a>
+      <a href="https://scholar.google.com/citations?user=me1GS18AAAAJ&hl=en&oi=sra" target="_blank" rel="noopener">Publications <span class="arw">&#8599;</span></a>
+      <a href="https://www.linkedin.com/in/chris-hill-24853b259/" target="_blank" rel="noopener">LinkedIn <span class="arw">&#8599;</span></a>
+    </nav>
+    <!-- No sound control. The ambience is not a feature to be switched on, it is the scene,
+         and a toggle invites a decision nobody needs to make. The mute block below still
+         guards on the button's absence, so removing it here is all that is required; audio
+         starts on the visitor's first interaction, which every browser requires regardless. -->
+    <div class="tabrow">
+      <button class="mini tab" data-pane="about" aria-expanded="false"><span class="mark">+</span>About</button>
+      <button class="mini tab" data-pane="work" aria-expanded="false"><span class="mark">+</span>Work<sup>19</sup></button>
+      <button class="mini tab" data-pane="how" aria-expanded="false"><span class="mark">+</span>How I work</button>
+    </div>
+  </div>
+  <div class="foot">
+    <div class="hint" id="hint">move through the grass</div>
+    <div class="credit">Boulder photo <a href="https://commons.wikimedia.org/wiki/File:Chautauqua_Park_(9712391194).jpg" target="_blank" rel="noopener">Akos Kokai</a> CC BY 2.0 · fall &amp; winter edits via Gemini · heavily inspired by <a href="https://oscardumlao.com/" target="_blank" rel="noopener">oscardumlao.com</a></div>
+  </div>
+
+  <div class="seasons" id="seasons">
+    <button data-season="summer" aria-pressed="true">summer</button>
+    <button data-season="fall" aria-pressed="false">fall</button>
+    <button data-season="winter" aria-pressed="false">winter</button>
+  </div>
+  <div class="loading" id="loading">loading</div>
+</div>
+
+<aside class="sheet" id="sheet" aria-hidden="true">
+  <div class="sheet-top">
+    <p class="label" id="sheetLabel">About</p>
+    <button class="close" id="sheetClose" aria-label="close">&#215;</button>
+  </div>
+
+  <div class="pane about" data-pane="about">
+    <p class="hero">Creative technologist, building AI enhanced <span class="rot" id="rot">Hardware</span> experiences.</p>
+    <p class="lead">I start by building early versions of new hardware and software experiences.</p>
+    <p>Most of my work is exploring how a product might work before it exists, from near-term concepts to speculative ones.</p>
+    <p>I start by turning an idea into a form a team can critique and use while the concept is still forming, then combine design, hardware, software, and evaluation into a working MVP. From there I work with teams and vendors to deploy it, then bring back what I learn once people are actually using it.</p>
+    <p>In practice that means working across AI model integration, embedded and real-time software, hardware, prototyping, design, and fabrication.</p>
+  </div>
+
+  <div class="pane work-pane" data-pane="work">
+    <ol class="works">
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2026/08/canoe-installed-jungle-cruise-773x1030.jpg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Large-Format 3D-Printed Outrigger Canoe</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-ch-fx="arm" data-href="https://www.linkedin.com/feed/update/urn:li:activity:7414525526393970689/"><img src="https://chrisnhill.com/wp-content/uploads/2026/08/canoe-installed-jungle-cruise-773x1030.jpg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">Walt Disney Imagineering · Fabrication</span>
+          <p class="work-desc">A large-format 3D-printed outrigger canoe for the Jungle Cruise at Disneyland, built to explore how additive manufacturing can bring a first-of-its-kind prop to the parks. Design, fabrication, and install led by Chris Hill on the Walt Disney Imagineering R&D side, in collaboration with Haddy.</p>
+          <div class="work-meta"><a href="https://www.linkedin.com/feed/update/urn:li:activity:7414525526393970689/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2026/08/ezgif.com-video-to-gif-converter.gif" alt="" loading="lazy" decoding="async">
+          <span class="work-title">patchCAD: Prompt-to-Part CAD on a Node Canvas</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-ch-fx="patch" data-href="https://github.com/ChristianNHill/patchcad"><img src="https://chrisnhill.com/wp-content/uploads/2026/08/ezgif.com-video-to-gif-converter.gif" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">Personal Project · Generative CAD</span>
+          <p class="work-desc">A generative CAD project where a model designs a part as a graph of nodes and decides how they fit together. Another model then generates each geometry node. Don’t like one piece of the 3D model? Reprompt that node and the rest stays as it is.</p>
+          <div class="work-meta"><a href="https://github.com/ChristianNHill/patchcad" target="_blank" rel="noopener">GitHub <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2026/08/lorcana-collection-quest-dca-show-1030x773.jpg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Disney Lorcana Collection Quest</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-ch-fx="arm" data-model="staff" data-href="https://www.youtube.com/watch?v=S2_-NaSnRC4"><img src="https://chrisnhill.com/wp-content/uploads/2026/08/lorcana-collection-quest-dca-show-1030x773.jpg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">Walt Disney Imagineering · Fabrication</span>
+          <p class="work-desc">A limited-time interactive experience at Disney California Adventure. The main prop, an Inkcaster, was fabricated using both traditional desktop 3D printing and large format additive manufacturing. Fabrication and design for additive manufacturing led by Chris Hill, in collaboration with Haddy.</p>
+          <div class="work-meta"><a href="https://www.youtube.com/watch?v=S2_-NaSnRC4" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2026/08/AdobeExpress-F5C8B211-D619-413A-9858-EB1CBA3E36A8-ezgif.com-speed.gif" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Claude Token Economy Lab</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://github.com/ChristianNHill/claude-token-economy-lab"><img src="https://chrisnhill.com/wp-content/uploads/2026/08/AdobeExpress-F5C8B211-D619-413A-9858-EB1CBA3E36A8-ezgif.com-speed.gif" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">Personal Project · AI + Evaluation</span>
+          <p class="work-desc">Four labs that measure where AI coding-agent tokens go and what each fix does, computed from my real session transcripts. Across 9,728 of my own turns, 87–93% of spend went to re-reading conversation history rather than outputting the answer.</p>
+          <div class="work-meta"><a href="https://github.com/ChristianNHill/claude-token-economy-lab" target="_blank" rel="noopener">GitHub <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/11/youtube-channel-cover-F68OAY6JX56YWMR-1030x687-1.jpeg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Cat Whisker Sensory Extension Wearable (2.0)</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-ch-fx="whisker" data-href="https://chrisnhill.com/whisker/"><img src="https://chrisnhill.com/wp-content/uploads/2022/11/youtube-channel-cover-F68OAY6JX56YWMR-1030x687-1.jpeg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">Cyborg Crafts · Sensory Extension</span>
+          <p class="work-desc">A wearable that extends touch into the space around you through digitized whiskers, a reimagining and 2.0 of an earlier whisker sensory-extension project.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/whisker/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://www.instructables.com/Cat-Whisker-Sensory-Extension-Wearable-20/" target="_blank" rel="noopener">Build <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2026/08/88FE3F70-B3A2-4CC9-8A9D-2B62002DCE37.png" alt="" loading="lazy" decoding="async">
+          <span class="work-title">CADClamp: Scoring for AI-Generated CAD</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-ch-fx="sketch" data-href="https://github.com/ChristianNHill/cadclamp"><img src="https://chrisnhill.com/wp-content/uploads/2026/08/88FE3F70-B3A2-4CC9-8A9D-2B62002DCE37.png" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">Personal Project · AI + Evaluation</span>
+          <p class="work-desc">A benchmark that scores AI-generated CAD on whether the part can be 3D printed. It executes model-written build123d and OpenSCAD in a sandbox, then grades the resulting solid deterministically. Graded 15 models across two languages.</p>
+          <div class="work-meta"><a href="https://github.com/ChristianNHill/cadclamp" target="_blank" rel="noopener">GitHub <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/12/DSC05163-1-1-1030x687.jpg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Resolve-Ables: Visualizing Phenomena Through Light Painting</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/resolve-ables/"><img src="https://chrisnhill.com/wp-content/uploads/2022/12/DSC05163-1-1-1030x687.jpg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">Master’s Thesis · Hardware/Firmware/AI</span>
+          <p class="work-desc">Three wearable devices that make invisible phenomena visible: a magnetic-field sensor, an ultrasonic “third ear,” and an AI-nose scent classifier, each rendered as long-exposure light paintings.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/resolve-ables/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://github.com/ChristianNHill/Resolve-Ables" target="_blank" rel="noopener">GitHub <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2021/12/20211203_170832-1-845x684.jpg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">ScentBots: Scent-Based Telepresence Robots</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/scentbots/"><img src="https://chrisnhill.com/wp-content/uploads/2021/12/20211203_170832-1-845x684.jpg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">ATLAS THING Lab · Robot</span>
+          <p class="work-desc">Scent-based telepresence robots that carry smell across distance, helping a remote-first research lab feel more physically present to one another.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/scentbots/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://www.youtube.com/watch?v=LXNdzXN8ktY" target="_blank" rel="noopener">Video <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/11/FJ2HDIPKFI98ARZ-1-1030x785.jpeg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">The ThreadBoard: An E-Textile Rapid Prototyping Board</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/threadboard/"><img src="https://chrisnhill.com/wp-content/uploads/2022/11/FJ2HDIPKFI98ARZ-1-1030x785.jpeg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">ACM TEI ’21 · Published Research</span>
+          <p class="work-desc">A magnetic-connector board that lets e-textile makers test circuit designs with conductive thread before committing to a sewn project, cutting down on trial-and-error for STEAM classrooms.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/threadboard/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://chrisnhill.com/wp-content/uploads/2022/11/ThreadBoardPaper.pdf" target="_blank" rel="noopener">Paper <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/11/FDGP0XCJYIYS3NU-768x430.webp" alt="" loading="lazy" decoding="async">
+          <span class="work-title">An AR System for Human Space Operations</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/nasa/"><img src="https://chrisnhill.com/wp-content/uploads/2022/11/FDGP0XCJYIYS3NU-768x430.webp" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">NASA SUITS · AR/VR</span>
+          <p class="work-desc">An AR/VR heads-up display for astronauts exploring hands-free EMG control and task guidance, so EVA astronauts can reduce cognitive load and time during space walks.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/nasa/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://github.com/CUSuits/CUTEE2020v2" target="_blank" rel="noopener">GitHub <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/11/2CA1AC01-7B3C-4E98-BA6C-CBB5CB02DF3B-845x620.jpeg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Auto-Paízo Games: Unifying Body and Digital World</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/auto/"><img src="https://chrisnhill.com/wp-content/uploads/2022/11/2CA1AC01-7B3C-4E98-BA6C-CBB5CB02DF3B-845x620.jpeg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">CHI PLAY ’23 · Published Research</span>
+          <p class="work-desc">An exploration of game designs that fuse a player’s physical body with the digital world, mapping how movement and sensing can drive play.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/auto/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://chrisnhill.com/wp-content/uploads/2023/07/chiplay23a-sub7374-i73.pdf" target="_blank" rel="noopener">Paper <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/12/20221207_142837-1500x630.jpg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Brain-Body AR Toolkit: Futuristic Food Experience</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/bci-food/"><img src="https://chrisnhill.com/wp-content/uploads/2022/12/20221207_142837-1500x630.jpg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">CU Boulder · Brain-Body Interfaces</span>
+          <p class="work-desc">A brain-body augmented reality toolkit built for a BCI class, turning neural and physiological signals into a futuristic, multisensory food experience.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/bci-food/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://www.thingiverse.com/thing:4750557" target="_blank" rel="noopener">Models <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/11/F24R4PAL87CNTMC-1500x630.jpeg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Sensory Extensions as Input for Simulations</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/rap/"><img src="https://chrisnhill.com/wp-content/uploads/2022/11/F24R4PAL87CNTMC-1500x630.jpeg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">ACM TEI ’23 · Published Research</span>
+          <p class="work-desc">Pairs sensory-extension devices with interactive simulations, testing whether surfacing normally-imperceptible phenomena helps people grasp abstract concepts.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/rap/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://chrisnhill.com/wp-content/uploads/2022/12/tei23-43.pdf" target="_blank" rel="noopener">Paper <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2021/06/FW8AIIPKQ2CELJC-1024x630.jpeg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Cyborg Crafts: Vibrotactile Tongue Vision</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/vttv/"><img src="https://chrisnhill.com/wp-content/uploads/2021/06/FW8AIIPKQ2CELJC-1024x630.jpeg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">IEEE World Haptics ’21 · Honorable Mention</span>
+          <p class="work-desc">An open-source, programmable tongue display unit that turns sight and sound into haptic feedback, designed so non-engineers can fabricate their own.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/vttv/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://github.com/ChristianNHill/WHC2021SIC-TeamCyborgCrafts" target="_blank" rel="noopener">GitHub <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/12/P1100315-1500x630.jpg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Circuit Playground Extension: Debugging Tool</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/extension/"><img src="https://chrisnhill.com/wp-content/uploads/2022/12/P1100315-1500x630.jpg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">Craft Tech Lab · E-Textile Tool</span>
+          <p class="work-desc">A sew-in extension for the Circuit Playground that lets e-textile makers design their circuitry with debugging built in from the start.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/extension/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://www.instructables.com/Circuit-Playground-Extension-E-Textile-Debugging-T/" target="_blank" rel="noopener">Build <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/11/F7M4HUNKSENC0NF-e1682124420510-652x430.webp" alt="" loading="lazy" decoding="async">
+          <span class="work-title">E-Textile Logic Probe: Debugging Tool</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/probe/"><img src="https://chrisnhill.com/wp-content/uploads/2022/11/F7M4HUNKSENC0NF-e1682124420510-652x430.webp" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">Craft Tech Lab · E-Textile Tool</span>
+          <p class="work-desc">A cheap, easy-to-build logic probe reimagined for e-textile beginners, so students can test states in soft circuits without breaking out lab equipment.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/probe/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://www.instructables.com/E-Textile-Logic-Probe-Debugging-Tool/" target="_blank" rel="noopener">Build <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/11/FIL96UYKSENC1J9-819x430.webp" alt="" loading="lazy" decoding="async">
+          <span class="work-title">E-Textile Logic Injector: Debugging Tool</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/logicinjector/"><img src="https://chrisnhill.com/wp-content/uploads/2022/11/FIL96UYKSENC1J9-819x430.webp" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">Craft Tech Lab · E-Textile Tool</span>
+          <p class="work-desc">A companion debugging tool that injects a high logical state into e-textile circuits, making it simpler to trace and verify soft-circuit behavior.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/logicinjector/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://www.instructables.com/E-Textile-Logic-Injector-Debugging-Tool/" target="_blank" rel="noopener">Build <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/11/F8UUNQKKAPORDWX-e1682125496615-840x430.webp" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Wearable Continuity Meter for Sewn Circuits</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/continuity/"><img src="https://chrisnhill.com/wp-content/uploads/2022/11/F8UUNQKKAPORDWX-e1682125496615-840x430.webp" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">FabLearn ’20 · Published Research</span>
+          <p class="work-desc">A wearable meter that actively monitors the continuity of an e-textile circuit as it’s being sewn, catching breaks in the moment they happen.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/continuity/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://dl.acm.org/doi/10.1145/3386201.3386217" target="_blank" rel="noopener">Paper <span class="arw">&#8599;</span></a></div></div>
+      </li>
+      <li class="work" data-open="0">
+        <div class="work-head">
+          <img class="work-thumb" src="https://chrisnhill.com/wp-content/uploads/2022/12/FT04H8SKPIC79UD-1500x630.jpg" alt="" loading="lazy" decoding="async">
+          <span class="work-title">Cyborg Crafts: Sense Magnetic Fields Like a Bird</span><span class="work-mark">+</span></div>
+        <div class="work-body">
+        <div class="work-media ch-case-media" data-href="https://chrisnhill.com/birdpuppet/"><img src="https://chrisnhill.com/wp-content/uploads/2022/12/FT04H8SKPIC79UD-1500x630.jpg" alt="" loading="lazy" decoding="async"></div>
+          <span class="work-tag">Cyborg Crafts · Sensory Extension</span>
+          <p class="work-desc">A sensory-extension puppet, Compy, whose beak senses magnetic fields and drives a haptic display, letting you feel magnetism the way a bird might.</p>
+          <div class="work-meta"><a href="https://chrisnhill.com/birdpuppet/" target="_blank" rel="noopener">Learn more <span class="arw">&#8599;</span></a> <a href="https://www.instructables.com/Sense-Magnetic-Fields-Like-a-Bird-Sensory-Extensio/" target="_blank" rel="noopener">Build <span class="arw">&#8599;</span></a></div></div>
+      </li>
+    </ol>
+  </div>
+
+  <div class="pane how" data-pane="how">
+    <p class="how-intro">I am a technologist, engineer, prototyper, and designer. My work centers on systems that leverage the latest technologies and techniques to create the experiences of the future. Technical prototyping is the foundation of that (CAD, fabrication, hardware, AI, real-time software), but collaboration and iterative design within a team is how the best new things are made.</p>
+    <ul class="principles">
+      <li class="principle"><img src="https://chrisnhill.com/wp-content/uploads/2026/08/phil-collaboration-v2.png" alt="" loading="lazy">
+        <div><h3>Collaboration is Key</h3><p class="quote">“If you want to go fast go alone, if you want to go far go together”</p></div></li>
+      <li class="principle"><img src="https://chrisnhill.com/wp-content/uploads/2026/08/phil-imitation-innovation-v2.png" alt="" loading="lazy">
+        <div><h3>Imitation, Assimilation, Innovation</h3><p>Discover what’s currently working in the world, and find ways to innovate it</p></div></li>
+      <li class="principle"><img src="https://chrisnhill.com/wp-content/uploads/2026/08/phil-prototyping-v2.png" alt="" loading="lazy">
+        <div><h3>Fake it Till You Make It (Prototyping)</h3><p>Start simple then gradually add interactivity and elements</p></div></li>
+      <li class="principle"><img src="https://chrisnhill.com/wp-content/uploads/2026/08/phil-stimuli-v2.png" alt="" loading="lazy">
+        <div><h3>Too Much Stimuli is Overwhelming</h3><p>Don’t overuse audio, haptic, and/or visuals</p></div></li>
+      <li class="principle"><img src="https://chrisnhill.com/wp-content/uploads/2026/08/phil-sketching-v2.png" alt="" loading="lazy">
+        <div><h3>Sketching in Hardware</h3><p>Nimble iterative prototyping with whatever’s around</p></div></li>
+    </ul>
+  </div>
+</aside>
+
+<style>.ch-case-media[data-ch-fx]{position:relative}.ch-case-media[data-ch-fx]:focus-visible{outline:2px solid #c85aa6;outline-offset:3px}.ch-fx-stage{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .4s ease,visibility 0s linear .4s;pointer-events:none;background:#0a0c10;overflow:hidden}.ch-fx-stage.on{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .4s ease,visibility 0s}.ch-fx-stage canvas{display:block;width:100%;height:100%;cursor:crosshair}.ch-fx-hint{position:absolute;left:12px;bottom:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10px;letter-spacing:.07em;color:rgba(214,224,234,.42);pointer-events:none;text-transform:uppercase}.ch-fx-chips{position:absolute;left:12px;top:10px;display:flex;flex-wrap:wrap;gap:5px;max-width:80%}.ch-fx-chips button{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:.04em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:rgba(222,230,238,.78);padding:3px 7px;border-radius:2px;cursor:pointer;transition:all .25s ease}.ch-fx-chips button:hover{background:rgba(200,90,166,.18);border-color:rgba(200,90,166,.55);color:#fff}.ch-fx-chips button.on{background:rgba(200,90,166,.28);border-color:rgba(200,90,166,.8);color:#fff}@media (prefers-reduced-motion: reduce){ .ch-fx-stage{display:none} }</style>
+<script>(()=>{"use strict";const t=matchMedia("(prefers-reduced-motion: reduce)").matches,e=matchMedia("(hover: hover) and (pointer: fine)").matches,n=(()=>{const t=new Map;return{register(e,n){t.set(e,n)},take(e){const n=t.get(e);return t.delete(e),n}}})();function o(t,e,n){const o=t.createShader(e);if(t.shaderSource(o,n),t.compileShader(o),!t.getShaderParameter(o,t.COMPILE_STATUS))throw console.error(t.getShaderInfoLog(o)),console.error(n.split("\n").map((t,e)=>e+1+": "+t).join("\n")),new Error("shader compile failed");return o}function a(t,e,n){const a=t.createProgram();if(t.attachShader(a,o(t,t.VERTEX_SHADER,e)),t.attachShader(a,o(t,t.FRAGMENT_SHADER,n)),t.linkProgram(a),!t.getProgramParameter(a,t.LINK_STATUS))throw console.error(t.getProgramInfoLog(a)),new Error("link failed");return a}function r(t,e){const n={},o=t.getProgramParameter(e,t.ACTIVE_UNIFORMS);for(let a=0;a<o;a++){const o=t.getActiveUniform(e,a);n[o.name.replace("[0]","")]=t.getUniformLocation(e,o.name)}return n}const i=t=>[parseInt(t.slice(1,3),16)/255,parseInt(t.slice(3,5),16)/255,parseInt(t.slice(5,7),16)/255];class s{constructor(t,e={}){this.canvas=t,this.dpr=Math.min(devicePixelRatio||1,2),this.time=0,this.running=!1,this.accent=i(e.accent||"#c85aa6"),this.rows=e.rows||5,this.cols=e.cols||6;const n=t.getContext("webgl2",{antialias:!0,alpha:!1,depth:!1,premultipliedAlpha:!1});if(!n)throw new Error("no webgl2");this.gl=n,this.senseR=.235,this.planeZ=1.3,this.cursor={x:0,y:.56,z:this.planeZ,on:0,vx:0,vy:0},this.hasImg=0,this.imgFit=[1,1],this.build(),this.resize(),e.bg&&this.loadImage(e.bg)}build(){const t=this.gl;this.pBg=a(t,"#version 300 es\nout vec2 vUv;\nvoid main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);\n  vUv = p; gl_Position = vec4(p*2.0 - 1.0, 0.0, 1.0); }","#version 300 es\nprecision highp float;\nin vec2 vUv;\nout vec4 frag;\nuniform vec2  uRes;\nuniform float uTime, uActive, uSenseScreen;\nuniform vec2  uCursor;\nuniform vec3  uAccent;\nuniform sampler2D uImg;\nuniform float uHasImg;\nuniform vec2  uImgFit;\n\nfloat hash12(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }\nfloat vnoise(vec2 p){\n  vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);\n  return mix(mix(hash12(i), hash12(i+vec2(1,0)), f.x),\n             mix(hash12(i+vec2(0,1)), hash12(i+vec2(1,1)), f.x), f.y);\n}\nfloat fbm(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<5;i++){ s+=a*vnoise(p); p*=2.07; a*=0.5; } return s; }\n// sharp alpine peaks rather than soft hills\nfloat ridged(float x, float sc, float sd){\n  float n = fbm(vec2(x*sc + sd, sd*3.1));\n  n = 1.0 - abs(n*2.0 - 1.0);\n  return pow(clamp(n, 0.0, 1.0), 1.55);\n}\nfloat starLayer(vec2 uv, float density, float seed, float t){\n  vec2 g = uv*density; vec2 i = floor(g), f = fract(g);\n  float h = hash12(i + seed);\n  if(h < 0.955) return 0.0;\n  vec2 c = vec2(hash12(i+seed+1.7), hash12(i+seed+4.3));\n  float d = length((f - c)*vec2(1.0, 1.0));\n  float br = (h - 0.955)/0.045;\n  float tw = 0.72 + 0.28*sin(t*(1.1 + br*2.6) + h*40.0);\n  return smoothstep(0.055, 0.0, d)*br*tw;\n}\n\nvoid main(){\n  vec2 px = gl_FragCoord.xy;\n  vec2 uv = px/uRes;\n  float ar = uRes.x/uRes.y;\n\n  // --- portfolio panels: the card's own photograph, taken down to near black ---\n  if(uHasImg > 0.5){\n    vec2 iuv = (uv - 0.5)*uImgFit + 0.5;\n    vec3 img = texture(uImg, clamp(iuv, 0.0, 1.0)).rgb;\n    float lum = dot(img, vec3(0.299, 0.587, 0.114));\n    vec3 col2 = mix(vec3(lum), img, 0.60)*0.155 + vec3(0.010, 0.013, 0.019);\n\n    if(uActive > 0.5){\n      float d = distance(px, uCursor);\n      // what the array senses, it also brings back into view\n      col2 += img*exp(-(d*d)/(uSenseScreen*uSenseScreen*0.95))*0.40;\n      col2 += uAccent*exp(-pow((d - uSenseScreen)/(uSenseScreen*0.085), 2.0))*0.17;\n      col2 += uAccent*exp(-pow((d - uSenseScreen*1.62)/(uSenseScreen*0.13), 2.0))*0.05;\n    }\n    vec2 q2 = (uv - 0.5)*vec2(1.0, 1.0/ar);\n    col2 *= 1.0 - dot(q2, q2)*0.80;\n    col2 += (hash12(px + fract(uTime)*63.0) - 0.5)*0.010;\n    frag = vec4(col2, 1.0);\n    return;\n  }\n\n  // --- sky ---\n  vec3 col = mix(vec3(0.030,0.041,0.062), vec3(0.055,0.070,0.108), pow(uv.y, 0.85));\n  col = mix(col, vec3(0.075,0.083,0.110), pow(1.0 - uv.y, 2.4)*0.55);  // faint glow off the plains\n\n  // --- Milky Way, running up out of the ridge ---\n  vec2 mw = vec2(uv.x*ar, uv.y);\n  float a = 0.62;\n  vec2 r = vec2(mw.x*cos(a) - mw.y*sin(a), mw.x*sin(a) + mw.y*cos(a));\n  float band = exp(-pow((r.x - 0.38)/0.20, 2.0));\n  float dust = fbm(r*vec2(5.0, 2.4) + 3.7);\n  col += vec3(0.085,0.088,0.125)*band*(0.35 + dust*0.85);\n  col -= vec3(0.020,0.018,0.014)*band*smoothstep(0.45,0.85,fbm(r*vec2(9.0,4.0)+11.0));\n\n  // --- stars ---\n  float st = starLayer(vec2(uv.x*ar, uv.y), 130.0, 1.0, uTime)*0.85\n           + starLayer(vec2(uv.x*ar, uv.y),  62.0, 7.0, uTime)*1.15\n           + starLayer(vec2(uv.x*ar, uv.y),  27.0, 19.0, uTime)*1.5;\n  st *= 0.55 + 0.75*band;\n  col += vec3(0.92,0.94,1.0)*st;\n\n  // --- Front Range: three layers, nearest darkest ---\n  float far  = 0.300 + ridged(uv.x, 2.1, 4.0)*0.150;\n  float mid  = 0.238 + ridged(uv.x, 3.4, 17.0)*0.115;\n  float near = 0.170 + ridged(uv.x, 5.2, 31.0)*0.080;\n\n  col = mix(col, vec3(0.055,0.064,0.088), smoothstep(far+0.004,  far-0.004,  uv.y));\n  col = mix(col, vec3(0.034,0.041,0.058), smoothstep(mid+0.003,  mid-0.003,  uv.y));\n\n  // conifer treeline sitting on the near ridge\n  float tree = near + 0.022*pow(ridged(uv.x, 150.0, 61.0), 0.6)\n                    + 0.012*pow(ridged(uv.x, 61.0, 83.0), 0.7);\n  col = mix(col, vec3(0.012,0.016,0.024), smoothstep(tree+0.0025, tree-0.0025, uv.y));\n\n  // --- the sensed region ---\n  if(uActive > 0.5){\n    float d = distance(px, uCursor);\n    col += uAccent*exp(-(d*d)/(uSenseScreen*uSenseScreen*0.55))*0.055;\n    col += uAccent*exp(-pow((d - uSenseScreen)/(uSenseScreen*0.085), 2.0))*0.19;\n    col += uAccent*exp(-pow((d - uSenseScreen*1.62)/(uSenseScreen*0.13), 2.0))*0.065;\n  }\n\n  vec2 q = (uv - 0.5)*vec2(1.0, 1.0/ar);\n  col *= 1.0 - dot(q,q)*0.80;\n  col += (hash12(px + fract(uTime)*63.0) - 0.5)*0.010;\n  frag = vec4(col, 1.0);\n}"),this.uBg=r(t,this.pBg),this.pWhisk=a(t,"#version 300 es\nprecision highp float;\nlayout(location=0) in vec4 aRootLen;\nlayout(location=1) in vec4 aDirThk;\nlayout(location=2) in vec4 aCurvePh;\nlayout(location=3) in vec4 aDefProx;\nlayout(location=4) in vec4 aSense;\nout vec3 vCol; out float vAlpha;\nuniform vec2 uRes;\nuniform float uHorizon, uFocal, uEyeH, uTime;\nuniform vec3 uBase, uTipCol, uAccent;\nconst int SEGS = 24;\n\nvec3 curvePoint(float t){\n  vec3 root = aRootLen.xyz; float len = aRootLen.w;\n  vec3 dir = aDirThk.xyz;   vec3 curve = aCurvePh.xyz;\n  float ph = aCurvePh.w;    vec3 def = aDefProx.xyz;\n  vec3 p = root + dir*len*t + curve*len*t*t + def*(t*t);\n  float b = sin(uTime*0.62 + ph*6.283)*0.010 + sin(uTime*1.41 + ph*11.0)*0.004;\n  p.y += b*len*t*t; p.x += b*0.45*len*t*t;\n  return p;\n}\nvec2 project(vec3 p){\n  float z = max(p.z, 0.06);\n  return vec2(uRes.x*0.5 + uFocal*p.x/z, uHorizon + uFocal*(uEyeH - p.y)/z);\n}\nvoid main(){\n  int vid = gl_VertexID;\n  float t = float(vid/2)/float(SEGS);\n  float side = (vid % 2 == 0) ? -1.0 : 1.0;\n\n  vec3 p  = curvePoint(t);\n  vec3 p2 = curvePoint(min(t + 0.035, 1.0));\n  vec2 sp = project(p), sp2 = project(p2);\n  vec2 tang = sp2 - sp; float tl = length(tang);\n  vec2 nrm = tl > 1e-4 ? vec2(-tang.y, tang.x)/tl : vec2(1.0, 0.0);\n\n  float thk = aDirThk.w*(1.0 - 0.66*t);\n  float halfw = max(uFocal*thk/max(p.z, 0.06), 0.62);\n  sp += nrm*side*halfw;\n  gl_Position = vec4(sp.x/uRes.x*2.0 - 1.0, 1.0 - sp.y/uRes.y*2.0, 0.0, 1.0);\n\n  float prox = aDefProx.w, tc = aSense.x, flare = aSense.y;\n  float local = exp(-pow((t - tc)/0.30, 2.0));\n  float sig = prox*(0.30 + 0.85*local);\n\n  vec3 body = mix(uBase, uTipCol, pow(t, 0.7));\n  vec3 col = body*(0.52 + 0.48*t);\n  col += uAccent*(sig*1.75 + flare*0.5*local);\n  vCol = col;\n  vAlpha = clamp(0.50 + 0.30*t + 0.55*sig, 0.0, 1.0);\n}","#version 300 es\nprecision highp float;\nin vec3 vCol; in float vAlpha; out vec4 frag;\nvoid main(){ frag = vec4(vCol, vAlpha); }"),this.uWhisk=r(t,this.pWhisk),this.quadVao=t.createVertexArray();const e=this.whiskers=[],n=[0,.56,1.46],o=this.rows,i=this.cols;for(let t=-1;t<=1;t+=2)for(let a=0;a<o;a++)for(let r=0;r<i;r++){const s=(9+r*(66/(i-1)))*Math.PI/180,l=(a*(38/(o-1))-20)*Math.PI/180,c=Math.random()-.5,h=[n[0]+t*(.028+.004*r),n[1]+.026*(a-(o-1)/2)+.006*c,n[2]-.008*r];let u=t*Math.sin(s)*Math.cos(l),f=Math.sin(l),d=.52*-Math.cos(s);const p=Math.hypot(u,f,d);u/=p,f/=p,d/=p;const m=.3+r*(.42/(i-1))+.1*(1-Math.abs(a-(o-1)/2)/Math.max((o-1)/2,.5))+.03*c;e.push({root:h,dir:[u,f,d],curve:[.1*t+.04*c,-.4-.12*Math.random(),.2+.1*Math.random()],len:m,thick:.0026+.0016*Math.random(),phase:Math.random(),def:[0,0,0],vel:[0,0,0],prox:0,tc:.5,flare:0,dist:1e9})}const s=this.count=e.length,l=new Float32Array(4*s),c=new Float32Array(4*s),h=new Float32Array(4*s);e.forEach((t,e)=>{l.set([t.root[0],t.root[1],t.root[2],t.len],4*e),c.set([t.dir[0],t.dir[1],t.dir[2],t.thick],4*e),h.set([t.curve[0],t.curve[1],t.curve[2],t.phase],4*e)}),this.dynA=new Float32Array(4*s),this.dynB=new Float32Array(4*s),this.vao=t.createVertexArray(),t.bindVertexArray(this.vao);const u=(e,n,o)=>{const a=t.createBuffer();return t.bindBuffer(t.ARRAY_BUFFER,a),t.bufferData(t.ARRAY_BUFFER,n,o),t.enableVertexAttribArray(e),t.vertexAttribPointer(e,4,t.FLOAT,!1,0,0),t.vertexAttribDivisor(e,1),a};u(0,l,t.STATIC_DRAW),u(1,c,t.STATIC_DRAW),u(2,h,t.STATIC_DRAW),this.bA=u(3,this.dynA,t.DYNAMIC_DRAW),this.bB=u(4,this.dynB,t.DYNAMIC_DRAW),t.bindVertexArray(null)}loadImage(t){const e=this.gl,n=new Image;n.crossOrigin="anonymous",n.onload=()=>{try{const t=e.createTexture();e.bindTexture(e.TEXTURE_2D,t),e.pixelStorei(e.UNPACK_FLIP_Y_WEBGL,!0),e.texImage2D(e.TEXTURE_2D,0,e.RGBA,e.RGBA,e.UNSIGNED_BYTE,n),e.texParameteri(e.TEXTURE_2D,e.TEXTURE_MIN_FILTER,e.LINEAR),e.texParameteri(e.TEXTURE_2D,e.TEXTURE_MAG_FILTER,e.LINEAR),e.texParameteri(e.TEXTURE_2D,e.TEXTURE_WRAP_S,e.CLAMP_TO_EDGE),e.texParameteri(e.TEXTURE_2D,e.TEXTURE_WRAP_T,e.CLAMP_TO_EDGE),this.tex=t,this.imgAspect=n.width/n.height,this.hasImg=1}catch(t){this.hasImg=0}},n.onerror=()=>{this.hasImg=0},n.src=t}fit(){if(!this.hasImg||!this.W)return[1,1];const t=this.W/this.H,e=this.imgAspect;return e>t?[t/e,1]:[1,e/t]}resize(){const t=this.canvas,e=t.getBoundingClientRect();if(0===e.width||0===e.height)return;const n=Math.max(1,Math.round(e.width*this.dpr)),o=Math.max(1,Math.round(e.height*this.dpr));n===t.width&&o===t.height||(t.width=n,t.height=o,this.W=n,this.H=o,this.horizon=.46*o,this.focal=.95*Math.min(n,1.34*o),this.eyeH=.56)}setPointer(t,e){const n=t*this.dpr,o=e*this.dpr,a=this.planeZ,r=(n-.5*this.W)*a/this.focal,i=this.eyeH-(o-this.horizon)*a/this.focal;this.cursor.vx=r-this.cursor.x,this.cursor.vy=i-this.cursor.y,this.cursor.x=r,this.cursor.y=i,this.cursor.on=1}clearPointer(){this.cursor.on=0}step(t){const e=this.whiskers,n=this.cursor,o=this.senseR,a=.46*o,r=Math.hypot(n.vx,n.vy);for(let i=0;i<e.length;i++){const s=e[i];let l=1e9,c=.5,h=0,u=0,f=0;if(n.on)for(let t=1;t<=10;t++){const e=t/10,o=e*e,a=s.root[0]+s.dir[0]*s.len*e+s.curve[0]*s.len*o+s.def[0]*o,r=s.root[1]+s.dir[1]*s.len*e+s.curve[1]*s.len*o+s.def[1]*o,i=s.root[2]+s.dir[2]*s.len*e+s.curve[2]*s.len*o+s.def[2]*o,d=a-n.x,p=r-n.y,m=i-n.z,x=d*d+p*p+m*m;x<l&&(l=x,c=e,h=d,u=p,f=m)}const d=n.on?Math.sqrt(l):1e9;s.dist=d,s.prox=n.on?Math.exp(-d*d/(o*o)):0,s.tc=c,s.flare=n.on?Math.min(1,7*r)*s.prox:0;const p=n.on?Math.exp(-d*d/(a*a)):0,m=d>1e-4?1/d:0,x=[h*m*p*.2,u*m*p*.2,f*m*p*.14];for(let e=0;e<3;e++)s.vel[e]+=(46*(x[e]-s.def[e])-7.4*s.vel[e])*t,s.def[e]+=s.vel[e]*t;this.dynA.set([s.def[0],s.def[1],s.def[2],s.prox],4*i),this.dynB.set([s.tc,s.flare,0,0],4*i)}n.vx*=.6,n.vy*=.6;const i=this.gl;i.bindBuffer(i.ARRAY_BUFFER,this.bA),i.bufferSubData(i.ARRAY_BUFFER,0,this.dynA),i.bindBuffer(i.ARRAY_BUFFER,this.bB),i.bufferSubData(i.ARRAY_BUFFER,0,this.dynB)}cursorScreen(){const t=this.planeZ;return[.5*this.W+this.focal*this.cursor.x/t,this.horizon+this.focal*(this.eyeH-this.cursor.y)/t]}draw(t){const e=this.gl;if(this.resize(),!this.W)return;this.step(Math.min(t,.033)),e.viewport(0,0,this.W,this.H),e.disable(e.BLEND),e.useProgram(this.pBg);const n=this.uBg,o=this.cursorScreen();e.uniform2f(n.uRes,this.W,this.H),e.uniform1f(n.uTime,this.time),e.uniform1f(n.uActive,this.cursor.on),e.uniform2f(n.uCursor,o[0],this.H-o[1]),e.uniform1f(n.uSenseScreen,this.focal*this.senseR/this.planeZ),e.uniform3fv(n.uAccent,this.accent),e.uniform1f(n.uHasImg,this.hasImg);const a=this.fit();e.uniform2f(n.uImgFit,a[0],a[1]),this.hasImg&&(e.activeTexture(e.TEXTURE0),e.bindTexture(e.TEXTURE_2D,this.tex),e.uniform1i(n.uImg,0)),e.bindVertexArray(this.quadVao),e.drawArrays(e.TRIANGLES,0,3),e.bindVertexArray(null),e.enable(e.BLEND),e.blendFunc(e.SRC_ALPHA,e.ONE_MINUS_SRC_ALPHA),e.useProgram(this.pWhisk);const r=this.uWhisk;e.uniform2f(r.uRes,this.W,this.H),e.uniform1f(r.uHorizon,this.horizon),e.uniform1f(r.uFocal,this.focal),e.uniform1f(r.uEyeH,this.eyeH),e.uniform1f(r.uTime,this.time),e.uniform3fv(r.uBase,i("#39424d")),e.uniform3fv(r.uTipCol,i("#aebbc8")),e.uniform3fv(r.uAccent,this.accent),e.bindVertexArray(this.vao),e.drawArraysInstanced(e.TRIANGLE_STRIP,0,50,this.count),e.bindVertexArray(null),e.disable(e.BLEND)}start(){if(this.running||t)return;this.running=!0,this.last=performance.now();const e=t=>{if(!this.running)return;const n=Math.min((t-this.last)/1e3,.05);this.last=t,this.time+=n,this.draw(n),this.raf=requestAnimationFrame(e)};this.raf=requestAnimationFrame(e)}stop(){this.running=!1,this.raf&&cancelAnimationFrame(this.raf)}still(){this.time=2,this.draw(.016)}}const l="#c85aa6",c="rgba(214,224,234,";function h(t){const e=Math.min(devicePixelRatio||1,2),n=t.getContext("2d"),o=()=>{const o=t.getBoundingClientRect();return!!o.width&&(t.width=Math.round(o.width*e),t.height=Math.round(o.height*e),n.setTransform(e,0,0,e,0,0),!0)};return o(),addEventListener("resize",o),{ctx:n,dpr:e,fit:o,w:()=>t.width/e,h:()=>t.height/e}}function u(t,e){let o=null,a=0,r=!1;const i=t=>{if(!r)return;const n=Math.min((t-a)/1e3,.05);a=t,e(n),o=requestAnimationFrame(i)};n.register(t,{start(){r||(r=!0,a=performance.now(),o=requestAnimationFrame(i))},stop(){r=!1,o&&cancelAnimationFrame(o),o=null},still(){e(.016)}})}function f(t,e,n){const o=t.createLinearGradient(0,0,0,n);o.addColorStop(0,"#0d1016"),o.addColorStop(1,"#080a0d"),t.fillStyle=o,t.fillRect(0,0,e,n),t.strokeStyle="rgba(255,255,255,0.045)",t.lineWidth=1,t.beginPath();for(let o=28;o<e;o+=28)t.moveTo(o+.5,0),t.lineTo(o+.5,n);for(let o=28;o<n;o+=28)t.moveTo(0,o+.5),t.lineTo(e,o+.5);t.stroke()}const d={canoe:{label:"outrigger canoe",note:"large-format additive · Jungle Cruise",polys:[[[.97,.86],[.91,.73],[.84,.62],[.74,.53],[.6,.46],[.42,.42],[.2,.395],[-.06,.385],[-.32,.39],[-.56,.405],[-.75,.435],[-.88,.475],[-.97,.545],[-.935,.435],[-.83,.315],[-.69,.205],[-.52,.115],[-.31,.055],[-.06,.03],[.17,.04],[.38,.09],[.56,.175],[.71,.295],[.83,.455],[.91,.645]]]},staff:{label:"inkcaster",note:"desktop + large-format · Lorcana Collection Quest",polys:[[[.99,.44],[.93,.52],[.85,.575],[.75,.61],[.66,.575],[.585,.515],[.545,.47],[.505,.52],[.47,.56],[.45,.5],[.415,.462],[-.7,.462],[-.79,.5],[-.975,.432],[-.79,.352],[-.7,.392],[.415,.392],[.45,.354],[.47,.294],[.505,.334],[.545,.384],[.585,.339],[.66,.279],[.75,.244],[.85,.279],[.93,.334]]],holes:[[[.847,.437],[.845,.449],[.841,.461],[.834,.471],[.825,.48],[.813,.486],[.801,.489],[.789,.489],[.777,.486],[.765,.48],[.756,.471],[.749,.461],[.745,.449],[.743,.437],[.745,.425],[.749,.413],[.756,.403],[.765,.394],[.777,.388],[.789,.385],[.801,.385],[.813,.388],[.825,.394],[.834,.403],[.841,.413],[.845,.425]],[[.712,.428],[.711,.439],[.707,.448],[.701,.457],[.693,.464],[.684,.469],[.673,.472],[.663,.472],[.652,.469],[.643,.464],[.635,.457],[.629,.448],[.625,.439],[.624,.428],[.625,.417],[.629,.408],[.635,.399],[.643,.392],[.652,.387],[.663,.384],[.673,.384],[.684,.387],[.693,.392],[.701,.399],[.707,.408],[.711,.417]],[[.985,.446],[.985,.428],[.845,.424],[.845,.45]]]}};function p(t,e,n){let o=!1;for(let a=0,r=t.length-1;a<t.length;r=a++){const[i,s]=t[a],[l,c]=t[r];s>n!=c>n&&e<(l-i)*(n-s)/(c-s)+i&&(o=!o)}return o}function m(t,e,n,o){let a=!1;for(const e of t)if(p(e,n,o)){a=!0;break}if(a&&e)for(const t of e)if(p(t,n,o))return!1;return a}const x=[{name:"chunky toy helicopter",nodes:["body","tail boom","main rotor","tail rotor","skids"],part:"heli"},{name:"bracket, two M3 holes",nodes:["base plate","rib","boss ×2","fillet"],part:"bracket"},{name:"parametric enclosure",nodes:["shell","lid","standoffs","vent slots"],part:"box"}];function y(t){[t].forEach(t=>{const e=t.querySelector("canvas"),n=h(e),o=n.ctx,a=t.querySelector("[data-chips]");let r=0,i=0,s=!0;x.forEach((t,e)=>{const n=document.createElement("button");n.textContent=t.name,n.dataset.i=e,0===e&&n.classList.add("on"),n.onclick=()=>{r=e,i=0,s=!0,a.querySelectorAll("button").forEach(t=>t.classList.toggle("on",t===n))},a.appendChild(n)}),e.style.touchAction="pan-y",u(t,t=>{const e=n.w(),a=n.h();s&&(i+=.42*t),i>1.25&&(s=!1),f(o,e,a);const h=x[r],u=.055*e,d=Math.min(100,.27*e),p=h.nodes.length,m=26,y=(.6*a-p*m)/Math.max(p-1,1);o.strokeStyle="rgba(200,90,166,0.35)",o.lineWidth=1;for(let t=0;t<p-1;t++){const e=6*(i-.1-.055*t);if(e<=0)continue;const n=.2*a+t*(m+y)+m,r=.2*a+(t+1)*(m+y);o.globalAlpha=Math.min(1,e),o.beginPath(),o.moveTo(u+.5*d,n),o.bezierCurveTo(u+.5*d,n+.6*y,u+.5*d,r-.6*y,u+.5*d,r),o.stroke(),o.globalAlpha=1}h.nodes.forEach((t,e)=>{const n=6*(i-.055*e);n<=0||function(t,e,n,a,r,i,s){o.globalAlpha=Math.min(1,1.6*i),o.fillStyle="rgba(255,255,255,0.035)",o.strokeStyle=s?"rgba(200,90,166,0.85)":c+"0.24)",o.lineWidth=1,o.beginPath(),o.roundRect(t,e,n,26,3),o.fill(),o.stroke(),o.fillStyle=c+"0.80)",o.font="8.5px ui-monospace, Menlo, monospace",o.fillText(r,t+6,e+11),o.strokeStyle=c+"0.16)",o.beginPath(),o.moveTo(t+6,e+18.5),o.lineTo(t+n-18,e+18.5),o.stroke(),s&&(o.fillStyle=l,o.beginPath(),o.arc(t+n-7,e+8,2.1,0,2*Math.PI),o.fill()),o.globalAlpha=1}(u,.2*a+e*(m+y),d,0,t,n,i>.22+.055*e&&i<.42+.075*e)}),function(t,e,n,a,r){const i=(o,a,r)=>[t+(o-r)*n*.86,e+(a+.5*(o+r))*n*.5],s=(t,e,n,o,a,r)=>({c:[[t,e,n],[t+o,e,n],[t+o,e+a,n],[t,e+a,n],[t,e,n+r],[t+o,e,n+r],[t+o,e+a,n+r],[t,e+a,n+r]],e:[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]]});o.strokeStyle=c+"0.55)",o.lineWidth=1.15;const l=[];if("heli"===a)l.push(s(-.95,-.42,-.42,1.5,.84,.84)),l.push(s(.55,-.2,-.2,.5,.42,.42)),l.push(s(1.05,-.1,-.1,1.35,.2,.2)),l.push(s(2.3,-.06,-.3,.12,.55,.12)),l.push(s(-.2,-.6,-.05,.1,.2,.1)),l.push(s(-.85,.46,-.5,1.7,.09,.09)),l.push(s(-.85,.46,.42,1.7,.09,.09)),l.push(s(-.55,.42,-.5,.08,.09,.92)),l.push(s(.35,.42,-.5,.08,.09,.92));else if("bracket"===a)l.push(s(-1.2,.3,-.8,2.4,.18,1.6)),l.push(s(-.1,-.9,-.8,.2,1.2,1.6)),l.push(s(-.75,.16,-.3,.3,.16,.3)),l.push(s(.45,.16,-.3,.3,.16,.3));else{l.push(s(-1.2,-.6,-.8,2.4,1,1.6)),l.push(s(-1.25,-.78,-.85,2.5,.16,1.7));for(let t=0;t<4;t++)l.push(s(.62*t-1,.28,-.6,.12,.14,1.2))}("heli"===a?[{c:[-.2,-.62,0],r:1.45,axis:"y",blades:3},{c:[2.36,-.06,-.24],r:.42,axis:"z",blades:2}]:[]).forEach(t=>{const e=[];for(let n=0;n<=40;n++){const o=n/40*Math.PI*2;e.push("y"===t.axis?[t.c[0]+Math.cos(o)*t.r,t.c[1],t.c[2]+Math.sin(o)*t.r]:[t.c[0]+Math.cos(o)*t.r*.25,t.c[1]+Math.sin(o)*t.r,t.c[2]])}o.globalAlpha=.55*Math.min(1,Math.max(0,3*(r-.55))),o.beginPath(),e.forEach((t,e)=>{const n=i(...t);e?o.lineTo(n[0],n[1]):o.moveTo(n[0],n[1])}),o.stroke();for(let e=0;e<t.blades;e++){const n=e/t.blades*Math.PI*2+.35,a="y"===t.axis?[t.c[0]+Math.cos(n)*t.r,t.c[1],t.c[2]+Math.sin(n)*t.r]:[t.c[0]+Math.cos(n)*t.r*.25,t.c[1]+Math.sin(n)*t.r,t.c[2]],r=i(...t.c),s=i(...a);o.beginPath(),o.moveTo(r[0],r[1]),o.lineTo(s[0],s[1]),o.stroke()}o.globalAlpha=1});const h=l.reduce((t,e)=>t+e.e.length,0);let u=0;l.forEach(t=>{t.e.forEach(([e,n])=>{const a=u/h;r>a&&((t,e,n)=>{o.globalAlpha=n,o.beginPath();const a=i(...t),r=i(...e);o.moveTo(a[0],a[1]),o.lineTo(r[0],r[1]),o.stroke(),o.globalAlpha=1})(t.c[e],t.c[n],Math.min(1,9*(r-a))),u++})})}(.68*e,.52*a,.115*Math.min(e,a),h.part,Math.max(0,(i-.3)/.72)),o.font="10px ui-monospace, Menlo, monospace",o.fillStyle=c+"0.5)";const g=i<.22?"planning graph…":i<.45?"pinning interfaces…":i<.95?"generating "+p+" nodes in parallel…":"resolved · "+p+" nodes";o.fillText(g,.055*e,a-44),o.fillStyle=c+"0.28)",o.fillText("pre-baked geometry",.055*e,a-32)})})}function g(t){const e=t=>t.stopPropagation();["click","auxclick","pointerdown","mousedown","pointerup","mouseup"].forEach(n=>t.addEventListener(n,e)),t.addEventListener("keydown",t=>{"Enter"!==t.key&&" "!==t.key||t.stopPropagation()}),t.addEventListener("dragstart",t=>{t.preventDefault(),t.stopPropagation()})}function v(t,e){let o=null,a=null,r=!1,i=null,p=!1;const x=()=>{let r;try{r=function(t,e){const n=t.querySelector("img"),o=document.createElement("div");o.className="ch-fx-stage";const a=document.createElement("canvas");if(o.appendChild(a),"arm"===e||"patch"===e){const t=document.createElement("div");t.className="ch-fx-chips",t.setAttribute("data-chips",""),o.appendChild(t)}const r=document.createElement("div");return r.className="ch-fx-hint",r.textContent={whisker:"move to sense",arm:"pick a model",patch:"pick a prompt",sketch:"drag to draw a part"}[e]||"",o.appendChild(r),t.appendChild(o),t.setAttribute("data-"+("whisker"===e?"whisker":e),""),{stage:o,canvas:a,img:n}}(t,e)}catch(t){return p=!0,!1}a=r.stage;try{"whisker"===e?function(t,e){const o=new s(e,{accent:t.dataset.accent,rows:t.dataset.rows?parseInt(t.dataset.rows):void 0,cols:t.dataset.cols?parseInt(t.dataset.cols):void 0,bg:t.dataset.bg||(t.querySelector("img")||{}).src}),a=t=>{const n=e.getBoundingClientRect();o.setPointer(t.clientX-n.left,t.clientY-n.top)};e.addEventListener("pointermove",a),e.addEventListener("pointerdown",a),e.addEventListener("pointerleave",()=>o.clearPointer()),e.style.touchAction="pan-y",addEventListener("resize",()=>o.resize()),n.register(t,{start(){o.start()},stop(){o.stop()},still(){o.still()},reset(){o.time=0,o.cursor&&(o.cursor.on=0,o.cursor.vx=0,o.cursor.vy=0),o.whiskers&&o.whiskers.forEach(t=>{t.def[0]=t.def[1]=t.def[2]=0,t.vel[0]=t.vel[1]=t.vel[2]=0,t.prox=0,t.flare=0,t.tc=.5,t.dist=1e9});try{o.still()}catch(t){}}})}(t,r.canvas):function(t,e){"arm"===e?function(t){[t].forEach(t=>{const e=t.querySelector("canvas"),n=h(e),o=n.ctx,a=t.querySelector("[data-chips]");let r=[],i=[],s=[-Math.PI/2,.6,.4],l=[0,0,0],p=[],x=0,y=0,g=[],v=!1,b=!1,M=t.dataset.model&&d[t.dataset.model]?t.dataset.model:"canoe",T={x:0,y:0},A=0;function S(){const t=n.w(),e=n.h();return{w:t,h:e,plate:{x0:.3*t,x1:.965*t,y:.86*e},scale:Math.min(.32*t,.52*e),base:{x:.115*t,y:.845*e}}}function E(t,e){const n=S();return{x:(n.plate.x0+n.plate.x1)/2+t*(n.plate.x1-n.plate.x0)*.47,y:n.plate.y-e*n.scale*.8}}function k(){const t=d[M];p=[],g=[],x=0,y=0,b=!1,v=!0;const e=t.polys.concat(t.holes||[]);let n=1/0,o=-1/0;e.forEach(t=>t.forEach(t=>{n=Math.min(n,t[1]),o=Math.max(o,t[1])}));const a=.73/Math.max(o-n,1e-4),s=t=>t.map(t=>[t[0],.05+(t[1]-n)*a]),l=t.polys.map(s),c=(t.holes||[]).map(s);let h=0;for(let t=.05825;t<.79;t+=.0165,h++){const e=[];let n=null;for(let o=-1;o<=1;o+=.0042){const a=m(l,c,o,t);a&&null===n&&(n=o),a||null===n||(o-n>.008&&e.push([n,o]),n=null)}null!==n&&e.push([n,1]),e.forEach((e,n)=>p.push({y:t,x0:n%2?e[1]:e[0],x1:n%2?e[0]:e[1],layer:h}))}A=h;const u=S();let f=0;for(const t of[[-1,0],[1,0],[-1,.82],[1,.82]]){const e=E(t[0],t[1]);f=Math.max(f,Math.hypot(e.x-u.base.x,e.y-7-u.base.y))}const T=1.14*f;r=[.42*T,.36*T,.22*T],i=[{x:u.base.x,y:u.base.y}];for(let t=0;t<3;t++)i.push({x:u.base.x+30*(t+1),y:u.base.y-40*(t+1)})}Object.keys(d).forEach((t,e)=>{const n=document.createElement("button");n.textContent="print "+d[t].label,t===M&&n.classList.add("on"),n.onclick=()=>{M=t,a.querySelectorAll("button").forEach(t=>t.classList.toggle("on",t===n)),k()},a.appendChild(n)}),e.style.touchAction="pan-y",k(),u(t,t=>{const e=S(),n=e.w,a=e.h;(!i.length||Math.abs(i[0].x-e.base.x)>2)&&k();const h=p[Math.min(x,p.length-1)],u=h?h.x0+(h.x1-h.x0)*Math.min(y,1):0,m=h?E(u,h.y):E(0,0);T={x:m.x,y:m.y-7},function(t,e){for(let n=0;n<3;n++){let o=t[n]-s[n];for(;o>Math.PI;)o-=2*Math.PI;for(;o<-Math.PI;)o+=2*Math.PI;l[n]+=(260*o-24*l[n])*e,l[n]=Math.max(-26,Math.min(26,l[n])),s[n]+=l[n]*e}for(let t=0;t<3;t++)i[t+1]={x:i[t].x+Math.cos(s[t])*r[t],y:i[t].y+Math.sin(s[t])*r[t]}}(function(t){const e=i[0],n=t.x,o=t.y-r[2],a=n-e.x,s=o-e.y;let l=Math.hypot(a,s);l=Math.max(Math.abs(r[0]-r[1])+.001,Math.min(r[0]+r[1]-.001,l));const c=Math.atan2(s,a),h=Math.max(-1,Math.min(1,(l*l+r[0]*r[0]-r[1]*r[1])/(2*l*r[0]))),u=Math.acos(h),f=Math.sin(c-u)*r[0]<=Math.sin(c+u)*r[0]?c-u:c+u,d=e.x+Math.cos(f)*r[0],p=e.y+Math.sin(f)*r[0];return[f,Math.atan2(o-p,n-d),Math.PI/2]}(T),t);const w=i[3],P=Math.hypot(w.x-T.x,w.y-T.y),R=P<26?1:P<75?.35:.06;if(v&&x<p.length)for(y+=t*R*(100+(p[x].x1===p[x].x0?60:0));y>=1&&x<p.length;)g.push(p[x]),y-=1,x++,x>=p.length&&(v=!1,b=!0);f(o,n,a),o.strokeStyle="rgba(214,224,234,0.30)",o.lineWidth=2,o.beginPath(),o.moveTo(e.plate.x0,e.plate.y+1),o.lineTo(e.plate.x1,e.plate.y+1),o.stroke(),o.fillStyle="rgba(255,255,255,0.05)",o.fillRect(e.plate.x0,e.plate.y+2,e.plate.x1-e.plate.x0,7),o.lineCap="round";const I=h?h.layer:A;if(g.forEach(t=>{const n=E(t.x0,t.y),a=E(t.x1,t.y),r=Math.min(1,(I-t.layer)/14),i=Math.round(255-72*r),s=Math.round(155+48*r),l=Math.round(80+128*r);o.strokeStyle="rgb("+i+","+s+","+l+")",o.lineWidth=Math.max(2,.0165*e.scale),o.beginPath(),o.moveTo(n.x,n.y),o.lineTo(a.x,a.y),o.stroke()}),v&&h){const t=E(h.x0,h.y),n=E(u,h.y);o.strokeStyle="#ffb347",o.lineWidth=Math.max(2,.0165*e.scale),o.beginPath(),o.moveTo(t.x,t.y),o.lineTo(n.x,n.y),o.stroke()}for(let t=0;t<3;t++){const e=i[t],n=i[t+1];o.strokeStyle="rgba(226,234,242,0.16)",o.lineWidth=15-3.4*t,o.lineCap="round",o.beginPath(),o.moveTo(e.x,e.y),o.lineTo(n.x,n.y),o.stroke(),o.strokeStyle=0===t?"rgba(255,150,60,0.75)":"rgba(226,234,242,0.62)",o.lineWidth=0===t?3.2:2,o.beginPath(),o.moveTo(e.x,e.y),o.lineTo(n.x,n.y),o.stroke()}for(let t=0;t<=3;t++){const e=i[t];o.fillStyle="#0a0c10",o.strokeStyle="rgba(226,234,242,0.55)",o.lineWidth=1.6,o.beginPath(),o.arc(e.x,e.y,0===t?11:6,0,2*Math.PI),o.fill(),o.stroke()}o.fillStyle="rgba(255,255,255,0.12)",o.beginPath(),o.moveTo(e.base.x-26,e.base.y+34),o.lineTo(e.base.x+26,e.base.y+34),o.lineTo(e.base.x+13,e.base.y),o.lineTo(e.base.x-13,e.base.y),o.closePath(),o.fill();const C=i[3];o.fillStyle="rgba(255,150,60,0.9)",o.beginPath(),o.moveTo(C.x-5,C.y),o.lineTo(C.x+5,C.y),o.lineTo(C.x+1.6,C.y+8),o.lineTo(C.x-1.6,C.y+8),o.closePath(),o.fill(),o.font="10px ui-monospace, Menlo, monospace",o.fillStyle=c+"0.55)";const L=d[M],F=p.length?Math.round(x/p.length*100):0;o.fillText(b?"printed · "+A+" layers":"printing "+L.label+" · layer "+((h?h.layer:0)+1)+"/"+A+" · "+F+"%",14,.905*a),o.fillStyle=c+"0.30)",o.fillText(L.note,14,.905*a+13)})})}(t):"patch"===e?y(t):"sketch"===e&&function(t){[t].forEach(t=>{const e=t.querySelector("canvas"),n=h(e),o=n.ctx;let a=[],r=[],i=!1,s=0,d=!1,p=null;const m=(t,e)=>{if(t.length<3)return t;let n=0,o=0;const[a,r]=[t[0],t[t.length-1]];for(let e=1;e<t.length-1;e++){const i=Math.abs((r.y-a.y)*t[e].x-(r.x-a.x)*t[e].y+r.x*a.y-r.y*a.x)/(Math.hypot(r.y-a.y,r.x-a.x)||1);i>n&&(n=i,o=e)}return n>e?m(t.slice(0,o+1),e).slice(0,-1).concat(m(t.slice(o),e)):[a,r]},x=t=>{const n=e.getBoundingClientRect();return{x:t.clientX-n.left,y:t.clientY-n.top}};e.addEventListener("pointerdown",t=>{i=!0,a=[x(t)],s=0,d=!1,p=null,e.setPointerCapture(t.pointerId)}),e.addEventListener("pointermove",t=>{if(!i)return;const e=x(t),n=a[a.length-1];Math.hypot(e.x-n.x,e.y-n.y)>2.5&&a.push(e)});const y=()=>{var t;i&&(i=!1,a.length>6&&(t=m(a,6.5),r=t.map((e,n)=>{if(0===n)return e;const o=t[n-1];let a=Math.atan2(e.y-o.y,e.x-o.x);const r=Math.PI/12;a=Math.round(a/r)*r;const i=Math.hypot(e.x-o.x,e.y-o.y);return{x:o.x+Math.cos(a)*i,y:o.y+Math.sin(a)*i}}),r.length>2&&(d=!0,p=function(t){let e=0;for(let n=0;n<t.length;n++){const o=t[n],a=t[(n+1)%t.length];e+=o.x*a.y-a.x*o.y}const n=e>0,o=t.map(t=>t.x),a=t.map(t=>t.y),r=Math.max(...o)-Math.min(...o),i=Math.max(...a)-Math.min(...a),s=Math.max(r,i)||1,l=[];let c=0;for(let e=0;e<t.length;e++){const o=t[e],a=t[(e+1)%t.length],r=a.x-o.x,i=a.y-o.y,h=Math.hypot(r,i)||1;let u=i/h,f=-r/h;if(n&&(u=-u,f=-f),f>.08){const t=180*Math.atan2(Math.abs(i),Math.abs(r))/Math.PI;if(t<45){const n=(45-t)/45;l.push({i:e,s:n}),c+=n*h/s}}}const h=Math.max(0,100-52*c);let u=1/0;for(let e=0;e<t.length;e++)for(let n=0;n<t.length;n++){if(n===e||(n+1)%t.length===e||n===(e+1)%t.length)continue;const o=t[n],a=t[(n+1)%t.length],r=a.x-o.x,i=a.y-o.y,s=r*r+i*i||1;let l=((t[e].x-o.x)*r+(t[e].y-o.y)*i)/s;l=Math.max(0,Math.min(1,l));const c=Math.hypot(t[e].x-(o.x+r*l),t[e].y-(o.y+i*l));c<u&&(u=c)}isFinite(u)||(u=.2*s);const f=Math.max(0,Math.min(100,u/s*820)),d=Math.max(...a);let p=0;for(let e=0;e<t.length;e++){const n=t[e],o=t[(e+1)%t.length];n.y>d-.07*s&&o.y>d-.07*s&&(p+=Math.abs(o.x-n.x))}const m=Math.max(0,Math.min(100,p/(r||1)*170));let x=0;for(let e=0;e<t.length;e++){const n=t[(e-1+t.length)%t.length],o=t[e],a=t[(e+1)%t.length],r=Math.atan2(n.y-o.y,n.x-o.x),i=Math.atan2(a.y-o.y,a.x-o.x);let s=Math.abs(r-i);s>Math.PI&&(s=2*Math.PI-s),s<35*Math.PI/180&&x++}const y=Math.max(0,100-24*x),g=Math.round(.38*h+.24*f+.22*m+.16*y),v=g>=86?"A":g>=75?"B":g>=62?"C":g>=48?"D":"F",b=[["OVERHANG",h],["MIN WALL",f],["BED CONTACT",m],["CORNERS",y]],M=b.slice().sort((t,e)=>t[1]-e[1])[0];return{total:g,grade:v,parts:b,verdict:l.length&&"OVERHANG"===M[0]?"needs support ×"+l.length:"MIN WALL"===M[0]?"thin wall "+(.42*u).toFixed(1)+"mm":"BED CONTACT"===M[0]?"raft advised":"CORNERS"===M[0]?x+" acute corner"+(x>1?"s":""):"prints unsupported",over:l}}(r))))};e.addEventListener("pointerup",y),e.addEventListener("pointerleave",y),e.style.touchAction="none",u(t,t=>{const e=n.w(),h=n.h();if(f(o,e,h),d&&s<1&&(s=Math.min(1,s+.42*t)),o.lineJoin="round",o.lineCap="round",a.length>1&&(o.strokeStyle="rgba(214,224,234,"+(i?.75:Math.max(0,.62-.62*s))+")",o.lineWidth=1.8,o.beginPath(),o.moveTo(a[0].x,a[0].y),a.forEach(t=>o.lineTo(t.x,t.y)),o.stroke()),d){const t=r,e=Math.min(1,s/.3);if(o.strokeStyle="rgba(214,224,234,"+.85*e*(s<.72?1:Math.max(.25,1-2*(s-.72)))+")",o.lineWidth=1.4,o.beginPath(),o.moveTo(t[0].x,t[0].y),t.forEach(t=>o.lineTo(t.x,t.y)),o.closePath(),o.stroke(),s>.12&&s<.8&&(o.fillStyle=l,t.forEach(t=>{o.beginPath(),o.arc(t.x,t.y,2.2,0,2*Math.PI),o.fill()})),s>.32&&s<.86){o.strokeStyle="rgba(200,90,166,0.5)",o.lineWidth=1,o.font="9px ui-monospace, Menlo, monospace",o.fillStyle="rgba(200,90,166,0.75)";for(let e=0;e<t.length-1&&e<4;e++){const n=t[e],a=t[e+1],r=(n.x+a.x)/2,i=(n.y+a.y)/2,s=Math.hypot(a.x-n.x,a.y-n.y),l=-(a.y-n.y)/s,c=(a.x-n.x)/s;o.beginPath(),o.moveTo(n.x+7*l,n.y+7*c),o.lineTo(a.x+7*l,a.y+7*c),o.stroke(),o.fillText((.42*s).toFixed(1),r+15*l-8,i+15*c+3)}}if(s>.55){const e=Math.min(1,(s-.55)/.45),n=-26*e,a=-16*e;for(let r=0;r<t.length;r++){const i=t[r],s=t[(r+1)%t.length],l=Math.atan2(s.y-i.y,s.x-i.x),c=.16+.3*Math.abs(Math.cos(l-.7));o.fillStyle="rgba(150,170,190,"+(c*e).toFixed(3)+")",o.beginPath(),o.moveTo(i.x,i.y),o.lineTo(s.x,s.y),o.lineTo(s.x+n,s.y+a),o.lineTo(i.x+n,i.y+a),o.closePath(),o.fill(),o.strokeStyle="rgba(214,224,234,"+.2*e+")",o.lineWidth=1,o.stroke()}o.fillStyle="rgba(196,214,232,"+(.3*e).toFixed(3)+")",o.beginPath(),o.moveTo(t[0].x+n,t[0].y+a),t.forEach(t=>o.lineTo(t.x+n,t.y+a)),o.closePath(),o.fill(),o.strokeStyle="rgba(230,240,250,"+.55*e+")",o.lineWidth=1.3,o.stroke()}}if(p&&s>.62){const t=Math.min(1,(s-.62)/.25);o.strokeStyle="rgba(255,168,76,"+.85*t+")",o.lineWidth=2.4,p.over.forEach(t=>{const e=r[t.i],n=r[(t.i+1)%r.length];o.beginPath(),o.moveTo(e.x,e.y),o.lineTo(n.x,n.y),o.stroke()})}if(p&&s>.72){const t=Math.min(1,(s-.72)/.28),n=Math.min(158,.38*e),a=e-n-14,r=.1*h;o.globalAlpha=t,o.fillStyle="rgba(8,10,14,0.80)",o.strokeStyle="rgba(255,255,255,0.10)",o.lineWidth=1,o.beginPath(),o.roundRect(a,r,n,118,3),o.fill(),o.stroke(),o.font="9px ui-monospace, Menlo, monospace",o.fillStyle="rgba(214,224,234,0.45)",o.fillText("CADCLAMP · PRINTABILITY",a+10,r+15);const i=p.total>=75,l=p.total>=55,c=i?"#7fd6a2":l?"#ffb347":"#ff7a6b";o.font="600 27px "+getComputedStyle(document.body).fontFamily,o.fillStyle=c,o.fillText(String(p.total),a+10,r+43),o.font="11px ui-monospace, Menlo, monospace",o.fillText(p.grade,a+10+o.measureText(String(p.total)).width+26,r+43),p.parts.forEach((e,i)=>{const s=r+58+13*i;o.font="8px ui-monospace, Menlo, monospace",o.fillStyle="rgba(214,224,234,0.42)",o.fillText(e[0],a+10,s+3);const l=a+72,c=n-84;o.fillStyle="rgba(255,255,255,0.08)",o.fillRect(l,s-4,c,4),o.fillStyle=e[1]>=75?"#7fd6a2":e[1]>=55?"#ffb347":"#ff7a6b",o.fillRect(l,s-4,c*Math.max(.02,e[1]/100)*t,4)}),o.font="8.5px ui-monospace, Menlo, monospace",o.fillStyle="rgba(255,168,76,0.85)",o.fillText(p.verdict,a+10,r+112),o.globalAlpha=1}o.font="10px ui-monospace, Menlo, monospace",o.fillStyle=c+"0.5)";const u=d?s<.3?"simplifying · RDP ε 6.5":s<.55?"snapping angles · 15°":s<.99?"extruding profile…":"graded · "+r.length+" vertices · "+(p?p.grade:""):i?"sketching…":"draw a closed shape";o.fillText(u,14,.9*n.h())})})}(t)}(t,e),o=n.take(t)}catch(t){o=null}if(!o)return p=!0,a.remove(),a=null,!1;try{o.still()}catch(t){}if("sketch"===e)g(a);else{const t=a.querySelector(".ch-fx-chips");t&&g(t)}return!0},v=()=>{if(!r&&!p){if(clearTimeout(i),"whisker"===e){if(!o&&!x())return;if(o.reset)try{o.reset()}catch(t){}}else{if((()=>{if(o)try{o.stop()}catch(t){}a&&a.remove(),o=null,a=null})(),!x())return;a.offsetWidth}r=!0,a.classList.add("on"),o.start()}},b=()=>{r&&(r=!1,a&&a.classList.remove("on"),i=setTimeout(()=>{!r&&o&&o.stop()},420))};t.addEventListener("pointerenter",t=>{"touch"!==t.pointerType&&v()}),t.addEventListener("pointerleave",b),t.tabIndex=0,t.addEventListener("focus",v),t.addEventListener("blur",b)}const b={whisker:"whisker",arm:"arm",patch:"patch",sketch:"sketch"};function M(){document.querySelectorAll("[data-ch-fx]").forEach(n=>{if(n.dataset.chFxOn)return;const o=b[n.getAttribute("data-ch-fx")];o&&e&&!t&&(n.dataset.chFxOn="1",v(n,o))})}"loading"===document.readyState?addEventListener("DOMContentLoaded",M):M()})();</script>
+<script>
+/* The ridge is the page. Three tabs sit over it — who, what, how — and all three share
+   one sheet, so only one thing is ever asking to be read. Inside the work pane each piece
+   waits again behind its own +, which keeps the open sheet a list of titles until a title
+   is asked what it was. */
+(() => {
+  const sheet = document.getElementById('sheet');
+  const label = document.getElementById('sheetLabel');
+  const tabs = [...document.querySelectorAll('.mini.tab')];
+  if(!sheet || !tabs.length) return;
+
+  const TITLES = { about:'About', work:'Selected Work', how:'How I work' };
+  // a lazy image parsed inside a hidden subtree stays asleep even after the subtree is
+  // shown; asking for it eagerly at that moment is what actually starts the fetch
+  const wake = (root) => { if(root) root.querySelectorAll('img[loading=\"lazy\"]')
+    .forEach(im => { im.loading = 'eager'; }); };
+  let openPane = null;
+
+  function show(pane){
+    openPane = pane;
+    sheet.classList.toggle('open', !!pane);
+    sheet.setAttribute('aria-hidden', String(!pane));
+    document.body.classList.toggle('sheet-open', !!pane);
+    if(pane){
+      label.textContent = TITLES[pane] || '';
+      document.querySelectorAll('.pane').forEach(n => n.classList.toggle('on', n.dataset.pane === pane));
+      document.querySelectorAll('.pane.on').forEach(n => n.scrollTop = 0);
+      wake(document.querySelector('.pane.on'));
+    }
+    tabs.forEach(t => {
+      const on = t.dataset.pane === pane;
+      t.setAttribute('aria-expanded', String(on));
+      t.querySelector('.mark').textContent = on ? '\u2013' : '+';
+    });
+  }
+
+  tabs.forEach(t => t.addEventListener('click', () =>
+    show(openPane === t.dataset.pane ? null : t.dataset.pane)));
+  document.getElementById('sheetClose').addEventListener('click', () => show(null));
+
+  /* The playlist, open on arrival and collapsible from there.
+     Two sources, chosen at build time. SoundCloud is the better citizen: full tracks for every
+     visitor signed in or not, and a widget that takes a colour, so it wears the site's accent
+     instead of somebody's brand green. Spotify is kept as the fallback.
+     The meadow does NOT duck for either. Neither embed exposes volume - only play, pause and
+     seek - so the only level this page can move is its own, and lowering the ambience to make
+     room for a track would put the scene second in its own frame. Music sits on top of the
+     meadow because a visitor asked for it; the meadow is what the page is. */
+  const player = document.getElementById('player');
+  if(player){
+    const btn = document.getElementById('playerTab');
+    const box = document.getElementById('playerBox');
+    const id = player.dataset.playlist, kind = player.dataset.kind;
+    const accent = (getComputedStyle(document.documentElement)
+                    .getPropertyValue('--accent') || '#C86AA8').trim().replace('#', '');
+    let open = false, ctrl = null, mounted = false;
+
+    function frame(src, h){
+      const f = document.createElement('iframe');
+      f.src = src;
+      // the permission never starts anything by itself; without it Chrome blocks the visitor's
+      // own click on play inside a cross-origin frame
+      f.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';
+      f.title = 'Playlist';
+      f.style.height = h + 'px';
+      box.replaceChildren(f);
+      return f;
+    }
+
+    /* Stripped to a bar: no artwork, no avatar, no play counts, no comments, no share or buy
+       or download buttons, no related tracks, and the accent instead of SoundCloud orange.
+       What is left is a play control, a title and a scrubber.
+       Then the part Spotify could not do - SoundCloud's Widget API exposes setVolume, so the
+       music can be held under the meadow rather than over it. The ambience stays where it is
+       and the track plays at MUSIC_LEVEL beneath it, which is the mix you asked for. */
+    const MUSIC_LEVEL = 30;   // per cent; the meadow keeps its full level
+    function mountSoundCloud(){
+      const q = new URLSearchParams({
+        url: id, color: '#' + accent, auto_play: 'false', hide_related: 'true',
+        show_comments: 'false', show_user: 'false', show_reposts: 'false', show_teaser: 'false',
+        show_artwork: 'false', show_playcount: 'false', sharing: 'false', buying: 'false',
+        download: 'false', visual: 'false',
+      });
+      const f = frame('https://w.soundcloud.com/player/?' + q.toString(), 166);
+      const attach = () => {
+        try {
+          const w = SC.Widget(f);
+          ctrl = w;
+          // Shuffle, done page-side. The widget has no shuffle of its own, but it does have
+          // skip(index) and a FINISH event, which is all an order needs: deal the indices once,
+          // start on the first of them, and hand it the next one each time a track ends.
+          let order = [], at = 0;
+          w.bind(SC.Widget.Events.READY, () => {
+            w.setVolume(MUSIC_LEVEL);
+            w.getSounds(list => {
+              const n = (list || []).length;
+              if(n < 2) return;
+              // Skip anything SoundCloud will only give as a 30-second snippet. The playlist is
+              // clean today, but a track can be re-gated behind Go+ at any time, and a shuffle
+              // that lands on a snippet is worse than one track short.
+              order = [];
+              for(let i = 0; i < n; i++){ const p = list[i] && list[i].policy; if(p !== 'SNIP') order.push(i); }
+              if(order.length < 2) order = Array.from({ length: n }, (_, i) => i);
+              const m = order.length;
+              for(let i = m - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [order[i], order[j]] = [order[j], order[i]]; }
+              at = 0;
+              w.skip(order[0]);
+            });
+          });
+          // the widget resets its own volume between sounds, so set it on every track
+          w.bind(SC.Widget.Events.PLAY, () => w.setVolume(MUSIC_LEVEL));
+          w.bind(SC.Widget.Events.FINISH, () => {
+            if(!order.length) return;
+            at = (at + 1) % order.length;
+            w.skip(order[at]);
+          });
+        } catch(e){}
+      };
+      if(window.SC && SC.Widget) { attach(); return; }
+      const sc = document.createElement('script');
+      sc.src = 'https://w.soundcloud.com/player/api.js';
+      sc.async = true;
+      sc.onload = attach;
+      document.head.appendChild(sc);
+    }
+
+    /* Spotify's own iframe API, used only to pause on collapse. If the script is blocked or
+       slow the plain iframe goes in instead, so a visitor never gets a dead player. */
+    function mountSpotify(){
+      const holder = document.createElement('div');
+      box.replaceChildren(holder);
+      let ready = false;
+      const plain = () => { if(!box.querySelector('iframe'))
+        frame('https://open.spotify.com/embed/playlist/' + id + '?utm_source=generator&theme=0', 152); };
+      window.onSpotifyIframeApiReady = API => {
+        ready = true;
+        API.createController(holder, { uri: 'spotify:playlist:' + id, width: '100%', height: '152' },
+                             c => { ctrl = c; });
+      };
+      const sc = document.createElement('script');
+      sc.src = 'https://open.spotify.com/embed/iframe-api/v1';
+      sc.async = true; sc.onerror = plain;
+      document.head.appendChild(sc);
+      setTimeout(() => { if(!ready) plain(); }, 4000);
+    }
+
+    const set = o => {
+      open = o;
+      player.classList.toggle('open', o);
+      btn.setAttribute('aria-expanded', String(o));
+      box.hidden = !o;
+      if(o){
+        if(!mounted){ mounted = true; kind === 'soundcloud' ? mountSoundCloud() : mountSpotify(); }
+      } else {
+        // Collapsing has to stop the music, or a widget you cannot see keeps playing. Spotify
+        // has an API for it; SoundCloud's widget does not without its own script, so the frame
+        // goes and is rebuilt on the next open.
+        if(kind === 'soundcloud'){
+          if(ctrl && ctrl.pause){ try { ctrl.pause(); } catch(e){} }
+          box.replaceChildren(); mounted = false; ctrl = null;
+        }
+        else if(ctrl && ctrl.pause){ try { ctrl.pause(); } catch(e){} }
+      }
+    };
+    btn.addEventListener('click', () => set(!open));
+    // open on wide screens, closed on narrow ones where there is nowhere for it to sit
+    /* Closed on arrival, always. The audio context needs one click on THIS page before the
+       meadow can sound, and clicks inside a cross-origin iframe never reach it - with the
+       player sitting open, a visitor's first click often went to SoundCloud and the scene
+       stayed silent under the music. Opening the panel is itself that click. */
+    set(false);
+  }
+  addEventListener('keydown', e => { if(e.key === 'Escape') show(null); });
+
+  // the photograph is the link, opened from a handler so the interactions can stop it
+  document.querySelectorAll('.work-media[data-href]').forEach(m =>
+    m.addEventListener('click', () => {
+      const u = m.dataset.href;
+      if(u) window.open(u, '_blank', 'noopener');
+    }));
+
+  document.querySelectorAll('.work-head').forEach(h => h.addEventListener('click', () => {
+    const w = h.closest('.work');
+    w.dataset.open = w.dataset.open === '1' ? '0' : '1';
+    h.querySelector('.work-mark').textContent = w.dataset.open === '1' ? '\u2013' : '+';
+    if(w.dataset.open === '1') wake(w);
+  }));
+
+  /* the hero line names what the work is made of, one material at a time */
+  const rot = document.getElementById('rot');
+  const WORDS = ["Hardware", "Software", "Sensory", "Interactive", "Thoughtful", "Fabrication", "Design", "Experimental", "Learning", "Robotic"];
+  if(rot && !matchMedia('(prefers-reduced-motion: reduce)').matches){
+    let i = 0;
+    setInterval(() => {
+      if(openPane !== 'about') return;          // nothing turning behind a closed door
+      rot.style.opacity = '0';
+      setTimeout(() => { i = (i + 1) % WORDS.length; rot.textContent = WORDS[i];
+                         rot.style.opacity = '1'; }, 280);
+    }, 2400);
+  }
+})();
+</script>
+<script>
+/* ------------------------------------------------------------------ *
+ *  Sound — the same engine the card page uses, joined to one full-page scene.
+ *
+ *  Every season keeps a voice; only the season on screen is visible to it, so only its
+ *  bed plays and only it answers the cursor. Switching season crossfades the beds.
+ *  This is a classic script on purpose: the scene is a module, and the module only has
+ *  to call three functions on window.SND rather than carry any of this.
+ * ------------------------------------------------------------------ */
+(() => {
+"use strict";
+const AUDIO_BASE = 'audio/';
+
+const KIT = {
+  winter: { model:'snow',   bed:'bed_winter.mp3', bedLevel:1.00, hits:['step01.mp3', 'step02.mp3', 'step03.mp3', 'step04.mp3', 'step05.mp3', 'step06.mp3', 'step07.mp3', 'step08.mp3', 'step09.mp3', 'step10.mp3', 'step11.mp3', 'step12.mp3'] },
+  summer: { model:'grass',  bed:'meadow_loop.mp3', bedLevel:0.90, loop:'grass_loop.mp3',
+            hits:['rustle01.mp3', 'rustle02.mp3', 'rustle03.mp3', 'rustle04.mp3', 'rustle05.mp3', 'rustle06.mp3', 'rustle07.mp3', 'rustle08.mp3'] },
+  fall:   { model:'leaves', bed:'bed_fall.mp3', bedLevel:2.00, hits:['leaf01.mp3', 'leaf02.mp3', 'leaf03.mp3', 'leaf04.mp3', 'leaf05.mp3'], snaps:['snap01.mp3', 'snap02.mp3', 'snap03.mp3', 'snap04.mp3', 'snap05.mp3', 'snap06.mp3', 'snap07.mp3', 'snap08.mp3'] }
+};
+
+const ATTACK = { snow:0.000, snap:0.002, rustle:0.070 };
+const MASTER = 0.35;          // bus around -9 dB; the clips are already -11 dBFS
+const BED    = 0.34;          // ambience sits well under anything the cursor makes
+                              // kit.bedLevel trims each bed to the same RMS. Note meadow_loop
+                              // is very wide (L-R is 3.5 dB LOUDER than L+R), so it loses about
+                              // 9 dB when a listener's output is mono. Stereo is matched.
+const SNAP_P = 0.35;          // stick snaps per leaf stride
+const GRASS_IDLE  = 0.06;     // grass is texture, not a bed: at rest it is barely there and
+                              // meadow_loop carries the ambience
+const GRASS_SWEEP = 0.50;     // how far the loop opens up at full cursor speed
+const EDGE   = 0.025;         // mp3 encoder delay: keep loop points inside the buffer
+const MAX_VOICES = 14;
+
+const Sound = (() => {
+  let ctx = null, master = null, muted = false, running = false, failed = false, ducked = false;
+  const buf = new Map();
+  const voices = [];
+  const wanted = new Set();          // clips whose scene has been near the viewport
+
+  const url = (name) => (window.SEASON_AUDIO && window.SEASON_AUDIO[name]) || AUDIO_BASE + name;
+  const listeners = [];
+
+  // decodeAudioData is promise-based everywhere current and callback-based on older
+  // WebKit; ask for both and take whichever answers.
+  const decode = (bytes) => new Promise((ok, no) => {
+    const p = ctx.decodeAudioData(bytes, ok, no);
+    if(p && p.then) p.then(ok, no);
+  });
+
+  async function grab(name){
+    if(buf.has(name)) return buf.get(name);
+    const u = url(name);
+    let bytes;
+    if(u.slice(0, 5) === 'data:'){
+      // Inlined build. Unpacking the base64 here rather than fetching the data: URL —
+      // Safari will not fetch one, and it is the same bytes either way.
+      const bin = atob(u.slice(u.indexOf(',') + 1));
+      const a = new Uint8Array(bin.length);
+      for(let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+      bytes = a.buffer;
+    } else {
+      const res = await fetch(u);
+      if(!res.ok) throw new Error(name + ' ' + res.status);
+      bytes = await res.arrayBuffer();
+    }
+    const b = await decode(bytes);
+    buf.set(name, b);
+    return b;
+  }
+
+  function clipsFor(kit){
+    const out = [];
+    if(kit.bed) out.push(kit.bed);
+    if(kit.loop) out.push(kit.loop);
+    (kit.hits || []).forEach(n => out.push(n));
+    (kit.snaps || []).forEach(n => out.push(n));
+    return out;
+  }
+
+  /* Autoplay policy: a context created before the visitor has interacted starts
+     suspended, and moving a mouse does not count as interacting. So the context and
+     the buffers are prepared straight away — decodeAudioData is happy on a suspended
+     context — and the first real gesture anywhere on the page unsuspends it. In
+     practice the page is silent until someone clicks or scrolls with a key, and from
+     then on the scenes simply have sound, with no button to find first. */
+  function init(){
+    if(ctx || failed) return;
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      master = ctx.createGain();
+      master.gain.value = MASTER;
+      master.connect(ctx.destination);
+    } catch (e){ failed = true; console.warn('sound unavailable', e); return; }
+
+    const wake = () => {
+      if(!ctx || running) return;
+      ctx.resume().then(() => {
+        running = (ctx.state === 'running');
+        if(running){
+          listeners.forEach(([t, fn]) => window.removeEventListener(t, fn, true));
+          voices.forEach(v => v.refresh());   // beds were set while the context slept
+          fire();
+        }
+      }).catch(() => {});
+    };
+    ['pointerdown','keydown','touchend','wheel'].forEach(t => {
+      window.addEventListener(t, wake, { capture:true, passive:true });
+      listeners.push([t, wake]);
+    });
+    ctx.onstatechange = () => { running = (ctx.state === 'running'); voices.forEach(v => v.refresh()); fire(); };
+    wake();                                   // some browsers allow it outright
+  }
+
+  /* Load a scene's clips the first time it comes near the viewport, so a visitor who
+     never scrolls past summer never pays for winter. */
+  async function want(kit){
+    if(!ctx || failed) return;
+    const need = clipsFor(kit).filter(n => !wanted.has(n));
+    if(!need.length) return;
+    need.forEach(n => wanted.add(n));
+    try { await Promise.all(need.map(grab)); }
+    catch (e){
+      // one failure means the whole set is unreachable (wrong path, or the page was
+      // opened off the disk). Say so once, then stop trying.
+      failed = true;
+      console.warn('sound unavailable — ' + (e && e.message ? e.message : e) +
+                   ' (base ' + AUDIO_BASE + ')', e);
+      fire();
+      return;
+    }
+    voices.forEach(v => { if(v.kit === kit){ v.attach(ctx, master, buf); v.refresh(); } });
+    fire();
+  }
+
+  /* The meadow steps back while music is playing. Two soundscapes at once is not twice the
+     atmosphere, it is neither one - so the ambience drops to a floor rather than stopping,
+     which keeps the cursor's footfalls readable underneath a track without competing. */
+  function level(){ return muted ? 0 : MASTER * (ducked ? 0.20 : 1); }
+  function setDucked(d){
+    ducked = !!d;
+    if(!ctx || !master) return;
+    master.gain.cancelScheduledValues(ctx.currentTime);
+    master.gain.setTargetAtTime(level(), ctx.currentTime, 0.45);
+  }
+
+  function setMuted(m){
+    muted = m;
+    if(!ctx) return;
+    master.gain.cancelScheduledValues(ctx.currentTime);
+    master.gain.setTargetAtTime(level(), ctx.currentTime, 0.2);
+    voices.forEach(v => v.refresh());
+    fire();
+  }
+
+  function fire(){ document.dispatchEvent(new CustomEvent('sound:state')); }
+
+  return {
+    register(v){ voices.push(v); return v; },
+    get on(){ return running && !muted && !failed; },
+    get muted(){ return muted; },
+    get ducked(){ return ducked; },
+    get waiting(){ return !!ctx && !running && !failed; },
+    get failed(){ return failed; },
+    get ctx(){ return ctx; },
+    init, want, setMuted, setDucked
+  };
+})();
+
+/* One scene's worth of sound. Fed pointer deltas by the mount block; owns nothing
+   until the visitor turns sound on, and goes quiet the moment the scene leaves view. */
+class SceneVoice {
+  constructor(season){
+    this.kit = KIT[season];
+    this.visible = false;
+    this.travel = 0;         // px since the last footfall
+    this.speed = 0;          // px/s, smoothed
+    this.prev = null;
+    this.live = 0;           // one-shots currently sounding
+    this.ctx = null;
+  }
+
+  attach(ctx, master, buf){
+    if(this.ctx) return;
+    this.ctx = ctx; this.buf = buf;
+    this.out = ctx.createGain();
+    this.out.gain.value = 1;
+    this.out.connect(master);
+
+    if(this.kit.bed){
+      this.bedGain = ctx.createGain();
+      this.bedGain.gain.value = 0;
+      this.bedGain.connect(this.out);
+      this.bedSrc = this.loopSource(buf.get(this.kit.bed), this.bedGain);
+    }
+    if(this.kit.loop){
+      this.loopGain = ctx.createGain();
+      this.loopGain.gain.value = 0;
+      this.loopGain.connect(this.out);
+      this.loopSrc = this.loopSource(buf.get(this.kit.loop), this.loopGain);
+    }
+  }
+
+  loopSource(b, dest){
+    const src = this.ctx.createBufferSource();
+    src.buffer = b;
+    src.loop = true;
+    // ffmpeg strips LAME gapless padding; browsers often do not. Both of these are
+    // broadband and crossfaded, so trimming the ends costs nothing and skips the gap.
+    src.loopStart = EDGE;
+    src.loopEnd = Math.max(EDGE * 2, b.duration - EDGE);
+    src.connect(dest);
+    src.start(0, EDGE);
+    return src;
+  }
+
+  setVisible(v){ this.visible = v; this.refresh(); }
+
+  refresh(){
+    if(!this.ctx) return;
+    const t = this.ctx.currentTime, live = this.visible && Sound.on;
+    const bedLevel = BED * (this.kit.bedLevel || 1);
+    if(this.bedGain) this.bedGain.gain.setTargetAtTime(live ? bedLevel : 0, t, 0.6);
+    if(this.loopGain) this.loopGain.gain.setTargetAtTime(live ? GRASS_IDLE : 0, t, 0.6);
+    if(!live){ this.speed = 0; this.travel = 0; this.prev = null; }
+  }
+
+  shot(name, attack, level, pan){
+    if(!this.ctx || this.live >= MAX_VOICES) return;
+    const b = this.buf.get(name);
+    if(!b) return;
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = b;
+    src.playbackRate.value = 1 + (Math.random() * 2 - 1) * 0.07;
+
+    const g = this.ctx.createGain();
+    const peak = level * Math.pow(10, ((Math.random() * 2 - 1) * 3.5) / 20);
+    if(attack > 0){
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(peak, t + attack);
+    } else {
+      g.gain.setValueAtTime(peak, t);
+    }
+
+    let tail = g;
+    if(pan !== undefined && this.ctx.createStereoPanner){
+      const p = this.ctx.createStereoPanner();
+      p.pan.value = pan;
+      g.connect(p); tail = p;
+    }
+    tail.connect(this.out);
+    src.connect(g);
+
+    this.live++;
+    src.onended = () => { this.live--; };
+    src.start(t);
+  }
+
+  pick(list){ return list[(Math.random() * list.length) | 0]; }
+
+  /* dx, dy in canvas px; dt in seconds. One stride is a fraction of the box, so the
+     cadence reads the same whether the card is 320 px wide or 700. */
+  move(dx, dy, dt, width){
+    if(!this.ctx || !Sound.on || !this.visible) return;
+    const lvl = this.level === undefined ? 1 : this.level;   // set by the full-page scene: distance
+    const dist = Math.hypot(dx, dy);
+    if(dt > 0){
+      const inst = Math.min(dist / dt, 4000);
+      this.speed += (inst - this.speed) * 0.30;
+    }
+    const stride = Math.max(46, width * 0.16);
+    this.travel += dist;
+
+    if(this.kit.model === 'grass'){
+      // texture, not events: the loop is the sound and the cursor rides its gain
+      const g = Math.min(this.speed / 900, 1);
+      this.loopGain.gain.setTargetAtTime(GRASS_IDLE + GRASS_SWEEP * Math.pow(g, 0.7) * lvl,
+                                         this.ctx.currentTime, 0.12);
+    }
+
+    if(this.speed < 25){                    // a resting cursor does not walk
+      this.travel = Math.min(this.travel, stride);
+      return;
+    }
+    // a single event can carry a big jump (a flick, a tab regaining focus); two
+    // footfalls is the most that ever reads as walking rather than a stumble
+    let fired = 0;
+    while(this.travel >= stride && fired < 2){
+      this.travel -= stride; fired++;
+      this.step(lvl);
+    }
+    if(this.travel > stride) this.travel = stride;
+  }
+
+  step(lvl){
+    const k = this.kit, L = lvl === undefined ? 1 : lvl;
+    if(k.model === 'snow'){
+      this.shot(this.pick(k.hits), ATTACK.snow, 0.46 * L);
+    } else if(k.model === 'grass'){
+      this.shot(this.pick(k.hits), ATTACK.rustle, 0.20 * L);
+    } else {
+      this.shot(this.pick(k.hits), ATTACK.rustle, 0.34 * L);   // leaf litter, already stereo
+      if(Math.random() < SNAP_P){
+        // snaps are mono on purpose, so each one gets its own place in the field
+        this.shot(this.pick(k.snaps), ATTACK.snap, 0.30 * L, (Math.random() * 2 - 1) * 0.65);
+      }
+    }
+  }
+
+  rest(){
+    if(!this.ctx) return;
+    this.speed = 0; this.travel = 0; this.prev = null;
+    if(this.loopGain && Sound.on && this.visible){
+      this.loopGain.gain.setTargetAtTime(GRASS_IDLE, this.ctx.currentTime, 0.35);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ *  Mute control
+ *
+ *  The sound is not something to switch on — it is part of the scene. This is here so
+ *  it can be switched OFF, and so a visitor whose browser is still holding the context
+ *  suspended can see that sound is coming rather than missing.
+ * ------------------------------------------------------------------ */
+(() => {
+  const btn = document.getElementById('sound');
+  if(!btn) return;
+  const label = btn.querySelector('.label');
+
+  const paint = () => {
+    if(Sound.failed){ label.textContent = 'sound unavailable'; btn.disabled = true;
+                      btn.setAttribute('aria-pressed','false'); return; }
+    if(Sound.muted){ label.textContent = 'sound off'; btn.setAttribute('aria-pressed','false'); return; }
+    if(Sound.waiting){ label.textContent = 'sound on — click anywhere to start';
+                       btn.setAttribute('aria-pressed','true'); return; }
+    label.textContent = 'sound on'; btn.setAttribute('aria-pressed','true');
+  };
+
+  btn.addEventListener('click', () => { Sound.setMuted(!Sound.muted); paint(); });
+  document.addEventListener('sound:state', paint);
+  paint();
+})();
+
+const ORDER = ['summer','fall','winter'];
+const VOICES = {};
+let live = 'summer', prev = null;
+
+/* Only open ground makes a sound.
+   The cursor is heard wherever the ray meets ground the plate agrees you could stand on —
+   the whole meadow now, out to where it gives way to the treeline, not just the 13.5 m band
+   the grass and the footprints are drawn in. Two things still decide silence. The sky and
+   the ridge are a photograph, so a ray that never meets the ground is nothing. And the
+   meadow is not empty: trees, bushes, the path and the walkers stand on it, and a footfall
+   on a pine is a footfall in mid-air, so each plate's walkable mask has the final say.
+   Distance then does what distance does — the far meadow is quieter and its stride longer,
+   because a stride measured in screen pixels covers a great deal more ground out there. */
+const hit = { x: 0, y: 0, set(x, y){ this.x = x; this.y = y; } };
+const probe = { ok: false, z: 0 };
+function survey(e){
+  const S = window.__seasons;
+  if(!S || !S.groundFromNdc){ probe.ok = true; probe.z = 6; return probe; }   // scene not up yet: do not gate
+  const nx = (e.clientX / innerWidth) * 2 - 1,
+        ny = -((e.clientY / innerHeight) * 2 - 1);
+  if(!S.groundFromNdc(nx, ny, hit)){ probe.ok = false; return probe; }        // ray never meets the ground
+  const z = -hit.y;                                                          // metres in front of the camera
+  probe.z = z;
+  const m = S.walkableAtNdc ? S.walkableAtNdc(nx, ny) : -1;   // -1 = no mask loaded
+  probe.ok = z >= S.CFG.band.zNear && (m < 0 ? z <= S.CFG.band.zFar : m > 0.5);
+  return probe;
+}
+/* Full strength across the band the scene actually draws, then falling away behind it. The
+   meadow runs to the treeline, hundreds of metres out, so the curve has to stay useful over
+   two orders of magnitude rather than fade to nothing by the far side of the fence. */
+function levelAt(z){
+  const S = window.__seasons, zf = S && S.CFG ? S.CFG.band.zFar : 13.5;
+  if(z <= zf) return 1;
+  const t = Math.min((z - zf) / 60, 1);
+  return Math.max(0.18, 1 - 0.82 * Math.pow(t, 0.6));
+}
+/* Out in the meadow a screen-pixel stride is a much longer walk, so space the footfalls. */
+function strideAt(z){
+  const S = window.__seasons, zf = S && S.CFG ? S.CFG.band.zFar : 13.5;
+  return z <= zf ? 1 : 1 + 1.70 * Math.min((z - zf) / 45, 1);
+}
+
+/* A stride is a fraction of the card on the portfolio page. Full-bleed there is no card,
+   and 16% of a wide viewport would be a stride you could park a bus in, so the walk is
+   measured against a notional 720 px instead: about a footfall every 115 px. */
+const STRIDE_REF = () => Math.max(520, Math.min(innerWidth * 0.5, 760));
+
+function start(){
+  ORDER.forEach(n => { VOICES[n] = Sound.register(new SceneVoice(n)); });
+  Sound.init();
+  to(live);
+}
+function to(name){
+  live = name;
+  ORDER.forEach(n => VOICES[n] && VOICES[n].setVisible(n === name));
+  if(KIT[name]) Sound.want(KIT[name]);
+}
+function move(e){
+  const v = VOICES[live];
+  if(!v) return;
+  const now = e.timeStamp || performance.now();
+  const p = survey(e);
+  if(!p.ok){
+    // over the sky, or over a tree, a bush, the path or a walker: let the grass fall back to
+    // its resting level and forget the distance, so re-entering does not dump a banked stride
+    v.rest();
+    prev = { x: e.clientX, y: e.clientY, t: now };
+    return;
+  }
+  v.level = levelAt(p.z);
+  if(prev) v.move(e.clientX - prev.x, e.clientY - prev.y,
+                  Math.max((now - prev.t) / 1000, 0.001), STRIDE_REF() * strideAt(p.z));
+  prev = { x: e.clientX, y: e.clientY, t: now };
+}
+function rest(){ prev = null; const v = VOICES[live]; if(v) v.rest(); }
+
+window.SND = { to, move, rest, reset(){ prev = null; },
+  /* Sound lives inside this closure; the panel needs one way in to duck the meadow. */
+  duck(on){ Sound.setDucked(on); } };
+window.__voices = VOICES;
+if(document.readyState === 'loading') addEventListener('DOMContentLoaded', start);
+else start();
+})();
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* ============================================================================
+   Flatirons Seasons — a photograph of the Chautauqua meadow, a monocular depth
+   map, and a relighting shader, with an interactive near field in Three.js.
+
+   Architecture (see PLAN.md §2c):
+     1. BACKDROP  full-screen quad. Samples photo + depth, applies pointer parallax,
+                  reconstructs a world position per pixel from the depth fit, derives
+                  normals, relights per season, and WRITES gl_FragDepth so the near
+                  field is occluded by the fence, posts and shrubs in the photograph.
+     2. NEAR FIELD  perspective camera calibrated to the photo's horizon. Grass
+                  (summer/fall), snow surface + snowfall + footprints (winter),
+                  leaves (fall). Blades take their colour from the photo under them.
+     3. INFLUENCE  ping-pong render target over the near-field ground rectangle.
+                  R proximity, G persistent (footprints), B spring pos, A spring vel.
+   ========================================================================== */
+
+const CFG = {
+  // one photograph + depth map per season. Summer is the original Chautauqua photo; fall and
+  // winter are image-model edits of it with the same framing (see PLAN.md §2c).
+  seasons: [
+    { key: 'summer', photo: 'assets/photo.jpg',        photoMobile: 'assets/photo-m.jpg',        depth: 'assets/depth.png',        mask: 'assets/mask.png?v=7ecf4c43' },
+    { key: 'fall',   photo: 'assets/photo-fall.jpg',   photoMobile: 'assets/photo-fall-m.jpg',   depth: 'assets/depth-fall.png',   mask: 'assets/mask-fall.png?v=10bff0f7' },
+    { key: 'winter', photo: 'assets/photo-winter.jpg', photoMobile: 'assets/photo-winter-m.jpg', depth: 'assets/depth-winter.png', mask: 'assets/mask-winter.png?v=0dc9b4e1' },
+  ],
+  photoHorizon: 0.49,   // horizon height in the photos, fraction from the bottom (meadow meets the treeline); the same for all three so the fences line up
+  screenHorizon: 0.47,  // where we'd like it on screen, fraction from the bottom
+  fovPhoto: 52,         // vertical fov of the full photo, degrees (phone 4:3, ~27 mm equivalent)
+  parallax: 0,           // metres of pointer-driven camera travel; 0 = locked camera
+  eyeH: 1.35,           // the shot is held a little below eye level; this puts the bottom edge ~4.6 m out
+  near: 0.3, far: 600,
+  // The drawn band. It used to stop at 13.5 m, a little past the fence, and the edge was
+  // visible: the grass answered the cursor in the foreground and the rest of the meadow was a
+  // photograph. It now runs to where the mask says the meadow ends, so the response reaches the
+  // treeline the same way the sound does.
+  band: { zNear: 2.0, zFar: 30.0 },   // interactive ground band, metres in front of the camera
+  grassCount: 62000,   // the band is ~5x the area it was; this keeps the near field as dense
+  flakeCount: 9000,
+  leafCount: 2800,
+};
+const isMobile = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (isMobile) { CFG.grassCount = 22000; CFG.flakeCount = 2500; CFG.leafCount = 1200; }
+
+/* ------------------------------------------------------------------ renderer */
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, isMobile ? 1.5 : 2));
+renderer.autoClear = false;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const gl = renderer.getContext();
+const halfFloatOK = !/nofloat/.test(location.search) && (!!gl.getExtension('EXT_color_buffer_float') || !!gl.getExtension('EXT_color_buffer_half_float'));
+
+/* ------------------------------------------------------------------ GLSL bits */
+const NOISE = /* glsl */`
+float hash1(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
+float hash1(float n){ return fract(sin(n)*43758.5453123); }
+vec2  hash2(vec2 p){ return vec2(hash1(p), hash1(p+17.1)); }
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+  return mix(mix(hash1(i), hash1(i+vec2(1,0)), f.x), mix(hash1(i+vec2(0,1)), hash1(i+vec2(1,1)), f.x), f.y);
+}
+float fbm(vec2 p){
+  float v = 0.0, a = 0.5; mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+  for(int i=0;i<5;i++){ v += a*vnoise(p); p = m*p; a *= 0.5; }
+  return v;
+}
+float fbm3(vec2 p){
+  float v = 0.0, a = 0.5; mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+  for(int i=0;i<3;i++){ v += a*vnoise(p); p = m*p; a *= 0.5; }
+  return v;
+}
+// fall: where the grass still shows through the leaf litter (1 = grass patch)
+float patchMask(vec2 xz){ return smoothstep(0.50, 0.58, fbm3(xz*0.30 + 7.0)); }
+// aspen leaf outline in local coords (-1..1), > 0 inside
+float leafShape(vec2 q){
+  float r = length(q*vec2(1.0, 0.85));
+  float tip = smoothstep(0.0, 0.9, q.y) * 0.22 * (1.0 - smoothstep(0.0, 0.45, abs(q.x)));
+  float notch = smoothstep(0.12, 0.0, abs(q.x)) * smoothstep(-0.55, -1.0, q.y) * 0.45;
+  return 1.0 - r + tip - notch;
+}
+`;
+
+// depth texture: R,G = 16-bit inverse depth (1 = nearest), B = sky mask
+const DEPTH_READ = /* glsl */`
+uniform sampler2D tDepth;
+float readDepth(vec2 uv){ vec3 t = texture2D(tDepth, uv).rgb; return (t.r*255.0*256.0 + t.g*255.0)/65535.0; }
+float readSky(vec2 uv){ return texture2D(tDepth, uv).b; }
+`;
+
+const TONEMAP = /* glsl */`
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+`;
+
+/* =============================================================== 1. BACKDROP */
+const BACKDROP_VS = /* glsl */`
+out vec2 vUv;
+void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+`;
+
+const BACKDROP_FS = /* glsl */`
+precision highp float;
+in vec2 vUv; out vec4 fragColor;
+// one photograph + depth map per season; the seasons are cross-faded by uMix
+uniform sampler2D tPhoto0, tPhoto1, tPhoto2, tDepth0, tDepth1, tDepth2;
+uniform vec4  uCrop0, uCrop1, uCrop2;        // photoUV = screenUV * crop.zw + crop.xy
+uniform vec2  uFit0, uFit1, uFit2;           // 1/z = a*d + b (metres), fitted on the meadow
+uniform vec3  uFar0, uFar1, uFar2;           // (plateau d, horizon d, far b): slide the offset so the plateau lands at ~2.5 km
+uniform vec2  uTexel0, uTexel1, uTexel2;
+uniform vec2  uRes;
+uniform vec3  uCamOff;                       // world offset of the live camera from the reference camera
+uniform float uTime;
+uniform vec3  uMix;                          // (summer, fall, winter) weights, sum 1
+uniform float uTanHalf, uAspect, uPitch, uEyeH;
+uniform vec2  uNearFar;
+${NOISE.replace(/texture2D/g, 'texture')}
+
+float decodeDepth(vec3 t){ return (t.r*255.0*256.0 + t.g*255.0)/65535.0; }
+float invZ(float d, vec2 fit, vec3 far){ float t = smoothstep(far.x, far.y, d); float bb = mix(far.z, fit.y, t); return max(fit.x*d + bb, 1.0/3000.0); }
+float fragDepth(float z){ float n = uNearFar.x, f = uNearFar.y; float ndc = (f+n)/(f-n) - 2.0*f*n/((f-n)*z); return ndc*0.5+0.5; }
+// the photograph was taken from the reference camera at (0, eyeH, 0) with pitch uPitch
+vec3 viewPos(vec2 uv, float z){ vec2 ndc = uv*2.0 - 1.0; return vec3(ndc.x*uTanHalf*uAspect*z, ndc.y*uTanHalf*z, -z); }
+vec3 toWorld(vec3 pc){ float c = cos(uPitch), s = sin(uPitch); return vec3(pc.x, c*pc.y - s*pc.z, s*pc.y + c*pc.z) + vec3(0.0, uEyeH, 0.0); }
+
+// Sample one season. Parallax is a real depth reprojection, not a UV shift: for this screen
+// pixel, find the reference-frame pixel whose world point the LIVE camera sees here. That is
+// what makes the photograph and the 3D near field move together instead of sliding past
+// each other, which a flat UV offset can never do.
+void season(sampler2D ph, sampler2D dp, vec4 crop, vec2 fit, vec3 far, vec2 texel, vec2 suv, out vec3 col, out float z, out float sky){
+  vec2 uvRef = suv;
+  float zRef = 10.0; vec3 P = vec3(0.0); vec3 t3 = vec3(0.0);
+  bool moved = dot(uCamOff, uCamOff) > 1e-8;
+  for(int i = 0; i < 3; i++){
+    vec2 puv = clamp(uvRef*crop.zw + crop.xy, texel, 1.0 - texel);
+    t3 = texture(dp, puv).rgb;
+    zRef = 1.0/invZ(decodeDepth(t3), fit, far);
+    zRef = mix(zRef, 2500.0, smoothstep(0.4, 0.9, t3.b));
+    P = toWorld(viewPos(uvRef, zRef));
+    if(!moved) break;                       // locked camera: the reference frame IS this frame
+    // project that world point through the live camera
+    vec3 q = P - (vec3(0.0, uEyeH, 0.0) + uCamOff);
+    float c = cos(-uPitch), sn = sin(-uPitch);
+    vec3 qc = vec3(q.x, c*q.y - sn*q.z, sn*q.y + c*q.z);
+    float zc = max(-qc.z, 0.05);
+    vec2 uvCur = vec2(qc.x/(uTanHalf*uAspect*zc), qc.y/(uTanHalf*zc))*0.5 + 0.5;
+    uvRef = clamp(uvRef + (suv - uvCur), 0.0, 1.0);
+  }
+  vec2 puv = clamp(uvRef*crop.zw + crop.xy, texel, 1.0 - texel);
+  col = texture(ph, puv).rgb;
+  sky = t3.b;
+  // depth reported to the z-buffer is the distance from the LIVE camera, so the near field occludes correctly
+  z = max(length(P - (vec3(0.0, uEyeH, 0.0) + uCamOff)), 0.05);
+}
+
+void main(){
+  vec2 suv = vUv;
+  vec3 c0 = vec3(0.0), c1 = vec3(0.0), c2 = vec3(0.0); float z0 = 2500.0, z1 = 2500.0, z2 = 2500.0, s0 = 1.0, s1 = 1.0, s2 = 1.0;
+  if(uMix.x > 0.002) season(tPhoto0, tDepth0, uCrop0, uFit0, uFar0, uTexel0, suv, c0, z0, s0);
+  if(uMix.y > 0.002) season(tPhoto1, tDepth1, uCrop1, uFit1, uFar1, uTexel1, suv, c1, z1, s1);
+  if(uMix.z > 0.002) season(tPhoto2, tDepth2, uCrop2, uFit2, uFar2, uTexel2, suv, c2, z2, s2);
+
+  // winter: the moonlit meadow gets a few live glints so the still photograph breathes
+  if(uMix.z > 0.002){
+    float meadow = (1.0 - s2) * smoothstep(0.35, 0.05, suv.y + 0.08) * step(0.62, dot(c2, vec3(0.333)));
+    vec2 cell = floor(suv*uRes*0.6);
+    float g = pow(hash1(cell), 400.0) * (0.5 + 0.5*sin(uTime*7.0 + hash1(cell+3.0)*40.0));
+    c2 += vec3(0.7, 0.8, 1.0) * g * meadow * 1.0;
+  }
+
+  vec3 col = c0*uMix.x + c1*uMix.y + c2*uMix.z;
+  // depth from the season that currently dominates
+  float z = (uMix.x >= uMix.y && uMix.x >= uMix.z) ? z0 : (uMix.y >= uMix.z ? z1 : z2);
+  // vignette + grain
+  vec2 vq = suv - 0.5; col *= 1.0 - dot(vq, vq)*0.30;
+  col += (hash1(suv*uRes + fract(uTime)) - 0.5) * (2.0/255.0);
+  fragColor = vec4(col, 1.0);
+  gl_FragDepth = fragDepth(z);
+}
+`;
+
+/* =========================================================== INFLUENCE FIELD */
+const INF_FS = /* glsl */`
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D tPrev;
+uniform vec4  uRect;      // xmin, zmin, xsize, zsize (world)
+uniform vec2  uP0, uP1;   // pointer ground positions this frame (world xz)
+uniform float uActive, uDt, uRadius, uStrength, uPersistDecay;
+uniform float uStamp; uniform vec2 uStampPos, uStampDir;
+${NOISE}
+void main(){
+  vec4 prev = texture2D(tPrev, vUv);
+  vec2 w = uRect.xy + vUv*uRect.zw;
+  // capsule distance to the segment travelled this frame
+  vec2 ab = uP1 - uP0; float t = clamp(dot(w - uP0, ab)/max(dot(ab,ab),1e-6), 0.0, 1.0);
+  float dist = length(w - (uP0 + ab*t));
+  float prox = uActive * smoothstep(uRadius, uRadius*0.25, dist);
+  float R = max(prev.r*exp(-uDt*7.0), prox);
+  float persist = prev.g * uPersistDecay;
+  if(uStamp > 0.5){
+    vec2 rel = w - uStampPos; vec2 dir = uStampDir; vec2 per = vec2(dir.y, -dir.x);
+    float ly = dot(rel, dir); float lx = dot(rel, per);
+    float widen = 1.0 + 0.34*smoothstep(-0.03, 0.07, ly);
+    float e = (lx*lx)/(0.062*0.062*widen*widen) + (ly*ly)/(0.150*0.150);
+    float sole = 1.0 - smoothstep(0.72, 1.0, e);
+    float arch = smoothstep(0.015, 0.04, abs(ly + 0.01));
+    persist = max(persist, sole*mix(0.86, 1.0, arch));
+  }
+  // spring toward target, damped
+  float target = prox * uStrength;
+  float disp = prev.b, vel = prev.a;
+  vel += ((target - disp)*46.0 - vel*7.0)*uDt;
+  disp += vel*uDt;
+  gl_FragColor = vec4(R, persist, disp, vel);
+}
+`;
+
+/* ================================================================== GRASS */
+const GRASS_VS = /* glsl */`
+precision highp float;
+attribute vec2 aRoot; attribute vec4 aRand;
+uniform sampler2D tInf, tPhoto, tDepth, tPhotoB, tDepthB;
+uniform vec4 uRect, uCrop, uCropB;
+uniform float uTime, uHeight, uWindAmt, uPatchMode, uMixB;
+uniform vec3 uCamPos;
+uniform vec2 uInfTexel, uDepthFit, uDepthFitB;
+float readDepth(vec2 uv){ vec3 t = texture2D(tDepth, uv).rgb; return (t.r*255.0*256.0 + t.g*255.0)/65535.0; }
+float readDepthB(vec2 uv){ vec3 t = texture2D(tDepthB, uv).rgb; return (t.r*255.0*256.0 + t.g*255.0)/65535.0; }
+varying vec3 vCol; varying vec2 vUvB; varying float vShade; varying float vFade;
+${NOISE}
+vec2 infUV(vec2 xz){ return (xz - uRect.xy)/uRect.zw; }
+void main(){
+  float t = uv.y;                    // 0 root .. 1 tip
+  float side = uv.x*2.0 - 1.0;       // -1 .. 1 across
+  vec2 root = aRoot;
+  vec2 iuv = infUV(root);
+  vec4 inf = texture2D(tInf, iuv);
+  // negated gradient of the spring channel -> push AWAY from the cursor
+  float rx = texture2D(tInf, iuv + vec2(uInfTexel.x*2.0, 0.0)).b - texture2D(tInf, iuv - vec2(uInfTexel.x*2.0, 0.0)).b;
+  float rz = texture2D(tInf, iuv + vec2(0.0, uInfTexel.y*2.0)).b - texture2D(tInf, iuv - vec2(0.0, uInfTexel.y*2.0)).b;
+  vec2 push = -vec2(rx, rz) * 4.5;
+  // heights: most blades mid-height, a few tall stalks
+  float tall = step(0.93, aRand.y);
+  float h = uHeight * (0.50 + 0.70*aRand.x + tall*0.9);
+  // fall: blades survive only in the grass patches, plus a sparse few poking through the litter
+  float bare = patchMask(root);
+  float keep = max(bare, 0.45*step(0.86, aRand.x));
+  h *= mix(1.0, keep, uPatchMode);
+  float w = 0.014 * (0.7 + 0.6*aRand.y) * (1.0 - tall*0.35);
+  // each blade has its own resting lean so the field is not a comb of verticals
+  float leanAz = aRand.w*6.2831;
+  vec2 restLean = vec2(cos(leanAz), sin(leanAz)) * (0.12 + 0.42*hash1(aRoot*3.1 + aRand.z));
+  // wind: slow gust field plus per-blade flutter
+  float gust = fbm3(root*0.18 - vec2(uTime*0.55, uTime*0.22));
+  vec2 windDir = normalize(vec2(0.85, 0.35));
+  vec2 bend = windDir*(gust*0.45 + 0.10)*uWindAmt + vec2(sin(uTime*2.3 + aRand.z*6.28), cos(uTime*1.7 + aRand.w*6.28))*0.05*uWindAmt;
+  bend += push + restLean;
+  float bl = length(bend); float maxB = 0.9; if(bl > maxB) bend *= maxB/bl;
+  // blade curve: quadratic lean, height shortened slightly when bent
+  float lean = 1.0 - 0.06*min(length(bend), 1.0);
+  vec3 up = vec3(0.0, 1.0, 0.0);
+  vec3 p = vec3(root.x, 0.0, root.y);
+  vec3 tip = p + vec3(bend.x, 0.0, bend.y)*h*0.9 + up*h*lean;
+  vec3 mid = p + up*h*0.55 + vec3(bend.x, 0.0, bend.y)*h*0.25;
+  vec3 pos = mix(mix(p, mid, t), mix(mid, tip, t), t);
+  // width direction: face a random azimuth, turned partly toward the camera
+  float az = aRand.z*6.2831;
+  vec3 facing = vec3(cos(az), 0.0, sin(az));
+  vec3 toCam = normalize(uCamPos - p);
+  vec3 wdir = normalize(mix(facing, normalize(cross(up, toCam)), 0.55));
+  float taper = 1.0 - pow(t, 1.6);
+  pos += wdir * side * w * taper;
+  // colour from the photo under the root: project the root to screen, map to photo uv
+  vec4 clipR = projectionMatrix * modelViewMatrix * vec4(p + up*0.05, 1.0);
+  vec2 suv = clipR.xy/clipR.w*0.5 + 0.5;
+  // ground colour: average the photo around the root, rejecting taps that land on a
+  // foreground object (fence post, rail) by comparing the depth map with the ground.
+  // Two photographs are blended so the blades take the colour of whichever season is showing.
+  float distR = length(uCamPos - p);
+  vec3 base = vec3(0.0), baseB = vec3(0.0); float wsum = 0.0, wsumB = 0.0;
+  vec2 puv = clamp(suv*uCrop.zw + uCrop.xy, 0.0, 1.0);
+  vec2 puvB = clamp(suv*uCropB.zw + uCropB.xy, 0.0, 1.0);
+  float dExp = (1.0/distR - uDepthFit.y)/uDepthFit.x;
+  float dExpB = (1.0/distR - uDepthFitB.y)/uDepthFitB.x;
+  for(int k=0;k<5;k++){
+    vec2 off = (k==0) ? vec2(0.0) : vec2(cos(float(k)*1.5708), sin(float(k)*1.5708))*0.022;
+    vec2 tuv = clamp(puv + off*uCrop.zw, 0.0, 1.0);
+    float ok = 1.0 - smoothstep(0.03, 0.08, readDepth(tuv) - dExp);
+    base += texture2D(tPhoto, tuv).rgb*ok; wsum += ok;
+    if(uMixB > 0.001){
+      vec2 tuvB = clamp(puvB + off*uCropB.zw, 0.0, 1.0);
+      float okB = 1.0 - smoothstep(0.03, 0.08, readDepthB(tuvB) - dExpB);
+      baseB += texture2D(tPhotoB, tuvB).rgb*okB; wsumB += okB;
+    }
+  }
+  base = (wsum > 0.05) ? base/wsum : texture2D(tPhoto, puv).rgb;
+  if(uMixB > 0.001){ baseB = (wsumB > 0.05) ? baseB/wsumB : texture2D(tPhotoB, puvB).rgb; base = mix(base, baseB, uMixB); }
+  // per-blade hue spread and a dark-to-light gradient up the blade
+  base *= 0.78 + 0.42*aRand.w;
+  base = mix(base, base*vec3(1.05, 1.0, 0.75), aRand.x*0.35);
+  base = mix(base, base*vec3(0.80, 1.0, 0.70), step(0.8, aRand.z)*0.5);   // a few greener blades
+  vCol = base;
+  vShade = mix(0.30, 1.12, pow(t, 0.75));
+  // patchy light: slow cloud shadow + ground undulation, same field the ground reads
+  float lm = 0.78 + 0.30*smoothstep(0.30, 0.78, fbm3(root*0.08 + vec2(uTime*0.02, uTime*0.008) + 5.0));
+  vShade *= lm;
+  vUvB = uv;
+  float dist = length(uCamPos - p);
+  vFade = smoothstep(-uRect.y + 0.5, -uRect.y - 2.2, -p.z);   // fade out at the far edge of the band
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+}
+`;
+const GRASS_FS = /* glsl */`
+precision highp float; uniform float uTone;
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+varying vec3 vCol; varying vec2 vUvB; varying float vShade; varying float vFade;
+uniform vec3 uLightCol, uAmbient; uniform float uOpacity; uniform vec3 uTint;
+void main(){
+  float edge = abs(vUvB.x*2.0 - 1.0);
+  float a = (1.0 - smoothstep(0.55, 1.0, edge)) * vFade * uOpacity;
+  if(a < 0.02) discard;
+  vec3 c = vCol * vShade * uTint;
+  c = c * (uAmbient + uLightCol);
+  // tip catch-light
+  c += uLightCol * 0.10 * smoothstep(0.7, 1.0, vUvB.y);
+  c = mix(c, aces(c*1.15), uTone);
+  gl_FragColor = vec4(c, a);
+}
+`;
+
+/* ================================================================== SNOW */
+const SNOW_VS = /* glsl */`
+precision highp float;
+uniform sampler2D tInf; uniform vec4 uRect; uniform float uTime;
+varying vec3 vW; varying vec2 vIuv;
+${NOISE}
+float drift(vec2 xz){ return fbm(xz*0.55 + 3.0)*0.30 + vnoise(xz*3.5)*0.04 + vnoise(xz*11.0)*0.012; }
+void main(){
+  // The surface stays exactly on the ground plane. Displacing it lifted the snow in front of
+  // the fence posts (a raised surface is nearer to the camera than the ground at the same
+  // pixel, so it won the depth test), and the coarse mesh tore around each footprint.
+  // Drifts and prints are shading only now — see the fragment shader.
+  vec3 p = vec3(position.x, 0.0, position.z);
+  vW = p; vIuv = (p.xz - uRect.xy)/uRect.zw;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+}
+`;
+const SNOW_FS = /* glsl */`
+precision highp float; uniform float uTone;
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+uniform sampler2D tInf, tPhoto; uniform vec4 uRect, uCrop; uniform float uTime, uOpacity;
+uniform vec3 uLightDir, uLightCol, uAmbient, uCamPos; uniform vec2 uInfTexel, uRes;
+varying vec3 vW; varying vec2 vIuv;
+${NOISE}
+float drift(vec2 xz){ return fbm(xz*0.55 + 3.0)*0.30 + vnoise(xz*3.5)*0.04 + vnoise(xz*11.0)*0.012; }
+float height(vec2 xz){
+  vec2 iuv = (xz - uRect.xy)/uRect.zw;
+  float pr = texture2D(tInf, iuv).g;
+  // the sole cuts down; snow displaced by the boot piles into a low rim just outside it
+  return drift(xz)*0.5 - pr*0.115 + smoothstep(0.05, 0.30, pr)*(1.0 - smoothstep(0.30, 0.55, pr))*0.030;
+}
+void main(){
+  // Detail has to thin out with distance now that the surface runs to 30 m. Crystal grain is
+  // 40 cells per metre and the glints 60: past ten metres or so those are smaller than a pixel,
+  // and drawing them anyway is not detail, it is noise - the far snow came out blotchy and
+  // sparkling at random. The relief flattens toward the plate instead; footprints do not, since
+  // they are the thing the visitor made and they read at any distance.
+  float lod = 1.0 - smoothstep(7.0, 20.0, length(vW.xz - uCamPos.xz));
+  float e = 0.025;
+  float hx = height(vW.xz + vec2(e,0.0)) - height(vW.xz - vec2(e,0.0));
+  float hz = height(vW.xz + vec2(0.0,e)) - height(vW.xz - vec2(0.0,e));
+  vec3 n = normalize(vec3(-hx, 2.0*e, -hz));
+  // grain: fine crystalline bump
+  n = normalize(n + vec3(vnoise(vW.xz*40.0)-0.5, 0.0, vnoise(vW.xz*40.0+7.0)-0.5)*0.12*lod);
+  vec3 L = normalize(uLightDir);
+  float ndl = max(dot(n, L), 0.0);
+  vec3 V = normalize(uCamPos - vW);
+  vec3 H = normalize(L + V);
+  float spec = pow(max(dot(n, H), 0.0), 60.0);
+  float print = texture2D(tInf, vIuv).g;
+  // base colour is the winter photograph under this point, so the surface is the photo's snow;
+  // the mesh only adds relief relative to a flat, moonlit surface
+  vec2 suv = gl_FragCoord.xy / uRes;
+  vec3 alb = texture2D(tPhoto, clamp(suv*uCrop.zw + uCrop.xy, 0.0, 1.0)).rgb;
+  alb = mix(alb, alb*vec3(0.80, 0.85, 0.96), print*0.35);   // compacted snow is only slightly greyer
+  float ndlFlat = max(L.y, 0.0);
+  float shade = clamp(1.0 + (ndl - ndlFlat)*2.2, 0.58, 1.55);
+  shade = mix(1.0, shade, 0.30 + 0.70*lod);
+  vec3 c = alb * shade * (1.0 - print*0.08) + uLightCol*spec*0.25*(1.0 - print)*lod;
+  // glints: hash cells twinkling as the view moves
+  vec2 cell = floor(vW.xz*60.0);
+  float g = pow(hash1(cell), 300.0) * (0.5 + 0.5*sin(uTime*6.0 + hash1(cell+1.0)*50.0));
+  c += vec3(0.8, 0.9, 1.0) * g * 1.2 * lod;
+  float far = smoothstep(-uRect.y + 0.3, -uRect.y - 2.5, -vW.z);
+  c = mix(c, aces(c*1.15), uTone);
+  gl_FragColor = vec4(c, far*uOpacity);
+}
+`;
+
+/* ================================================================ FLAKES */
+const FLAKE_VS = /* glsl */`
+precision highp float;
+attribute vec4 aSeed;
+uniform float uTime, uPixelRatio, uOpacity; uniform vec3 uBox, uBoxMin;
+uniform vec3 uCamPos;
+varying float vA;
+${NOISE}
+void main(){
+  float fall = 0.55 + 0.5*aSeed.w;
+  float tt = uTime*fall + aSeed.x*100.0;
+  vec3 p;
+  p.y = uBoxMin.y + uBox.y - mod(tt*0.9, uBox.y);
+  // meander: per-flake figure-eight plus a wind drift that grows with height
+  float ph = tt*1.6 + aSeed.y*6.28;
+  p.x = uBoxMin.x + mod(aSeed.y*uBox.x + sin(ph)*0.18 + uTime*0.35*(0.6+aSeed.z), uBox.x);
+  p.z = uBoxMin.z + mod(aSeed.z*uBox.z + sin(ph*0.5)*0.12, uBox.z);
+  float dist = length(uCamPos - p);
+  float size = (0.016 + 0.03*aSeed.w);
+  gl_PointSize = size * uPixelRatio * 900.0 / dist;
+  gl_PointSize = clamp(gl_PointSize, 1.5, 34.0);
+  vA = uOpacity * (0.55 + 0.45*aSeed.w) * smoothstep(0.8, 3.0, dist) * smoothstep(60.0, 20.0, dist);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+}
+`;
+const FLAKE_FS = /* glsl */`
+precision highp float; uniform float uTone;
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); } varying float vA; uniform vec3 uLightCol;
+void main(){
+  vec2 q = gl_PointCoord - 0.5; float r = length(q);
+  float a = smoothstep(0.5, 0.12, r) * vA;
+  vec3 c = vec3(0.85, 0.9, 1.0)*(0.5 + uLightCol*0.8); c = mix(c, aces(c*1.15), uTone);
+  gl_FragColor = vec4(c, a);
+}
+`;
+
+/* ================================================================ LITTER */
+// A ground-hugging layer of overlapping procedural aspen leaves over the near band.
+// Three jittered grid layers of leaf SDFs; gaps and grass patches discard so the
+// photograph's ground shows through underneath.
+const LITTER_VS = /* glsl */`
+precision highp float; varying vec3 vW;
+void main(){ vW = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+`;
+const LITTER_FS = /* glsl */`
+precision highp float; uniform float uTone;
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+varying vec3 vW;
+uniform float uOpacity, uTime; uniform vec3 uLightDir, uLightCol, uAmbient, uCamPos; uniform vec4 uRect;
+uniform sampler2D tPhoto; uniform vec4 uCrop; uniform vec2 uRes;
+${NOISE}
+vec3 leafPalette(float t){
+  vec3 a = vec3(0.90, 0.58, 0.16), b = vec3(0.96, 0.72, 0.24), c = vec3(0.74, 0.40, 0.11), d = vec3(0.46, 0.27, 0.12);
+  return t < 0.33 ? mix(a, b, t*3.0) : (t < 0.66 ? mix(b, c, (t-0.33)*3.0) : mix(c, d, (t-0.66)*3.0));
+}
+void main(){
+  vec2 w = vW.xz;
+  float bare = patchMask(w);
+  if(bare > 0.5) discard;
+  // Scattered leaves, never a carpet. Three overlapping layers at high coverage fuse into a
+  // continuous mat, and a mat painted over the plate's own tall grass can only read as a slab
+  // lying on top of it - no fade fixes that, because the problem is contiguity, not opacity.
+  // Two sparse layers keep the leaves discrete, so the grass reads between and through them.
+  // Even the drift peaks stay sparse. The dense patches were the whole problem: wherever coverage
+  // ran high the leaves fused and the run read as a deck laid over the plate's grass. A narrow
+  // range - thinner in places, never thick anywhere - matches how the isolated leaves already read.
+  float cov = smoothstep(0.34, 0.66, fbm3(w*0.20 + 19.0)) * 0.42;
+  if(cov < 0.015) discard;
+  float S = 13.0;                       // cells per metre
+  float bestPri = -1.0; vec3 col = vec3(0.0); float tiltx = 0.0, tilty = 0.0; float edge = 0.0;
+  float ao = 1.0;
+  for(int layer=0; layer<3; layer++){
+    vec2 off = vec2(0.37, 0.61)*float(layer);
+    vec2 cw = w*S + off;
+    vec2 ci = floor(cw);
+    for(int j=-1;j<=1;j++) for(int i=-1;i<=1;i++){
+      vec2 cell = ci + vec2(float(i), float(j));
+      if(hash1(cell + float(layer)*17.3 + 41.0) > cov) continue;
+      vec2 h = hash2(cell + float(layer)*31.7);
+      vec2 center = cell + 0.5 + (h - 0.5)*0.9;
+      float rot = hash1(cell + float(layer)*13.1 + 5.0)*6.2831;
+      float size = 0.58 + 0.42*hash1(cell*1.7 + float(layer));
+      vec2 d = (cw - center)/size;
+      float cr = cos(rot), sr = sin(rot);
+      vec2 q = vec2(cr*d.x - sr*d.y, sr*d.x + cr*d.y);
+      float sh = leafShape(q);
+      if(sh > 0.0){
+        float pri = float(layer)*10.0 + hash1(cell + 2.0);
+        if(pri > bestPri){
+          bestPri = pri;
+          float t = hash1(cell*0.71 + float(layer)*3.0);
+          col = leafPalette(t) * (0.80 + 0.35*hash1(cell + 9.0));
+          ao = 0.88 + 0.12*hash1(cell + 17.0);
+          edge = smoothstep(0.3, 0.0, sh);
+          tiltx = (h.x - 0.5)*0.9; tilty = (h.y - 0.5)*0.9;
+          // midrib
+          col *= 1.0 - 0.18*smoothstep(0.03, 0.0, abs(q.x))*step(-0.8, q.y);
+        }
+      }
+    }
+  }
+  if(bestPri < 0.0) discard;
+  vec3 n = normalize(vec3(tiltx, 1.0, tilty));
+  vec3 L = normalize(uLightDir);
+  float ndl = max(dot(n, L), 0.0);
+  float ndlFlat = max(L.y, 0.0);
+  float shade = clamp(1.0 + (ndl - ndlFlat)*1.3, 0.70, 1.20) * ao;
+
+  // Base colour is the fall photograph under this pixel - exactly what the snow surface does with
+  // the winter plate, and the reason the snow sits in the scene while painted leaves never could.
+  // Lit paint carries its own light and its own haze, so it reads as a layer laid on top no matter
+  // how it is faded or thinned. A tint of the plate inherits the plate's light, depth cueing and
+  // grain for free; the leaf only shifts the hue of what is already there, and relief does the rest.
+  vec2 suv = gl_FragCoord.xy / uRes;
+  vec3 plate = texture2D(tPhoto, clamp(suv*uCrop.zw + uCrop.xy, 0.0, 1.0)).rgb;
+  float lum = dot(plate, vec3(0.299, 0.587, 0.114));
+  vec3 leaf = mix(plate, col*(0.40 + 0.92*lum), 0.52);
+  leaf = mix(leaf, leaf*vec3(0.66, 0.47, 0.28), edge*0.55);     // curled rim
+  vec3 c = leaf * shade;
+  // Measured radially, not along -z: at the bottom corners of frame the ground is off to the side,
+  // so a depth-only fade misses exactly the corners where the layer showed worst.
+  float d = length(vW.xz - uCamPos.xz);
+  float far = smoothstep(12.0, 8.0, d);
+  c = mix(c, aces(c*1.15), uTone);
+  gl_FragColor = vec4(c, far*uOpacity);
+}
+`;
+
+/* ================================================================ LEAVES */
+const LEAF_VS = /* glsl */`
+precision highp float;
+attribute vec3 aCol; varying vec3 vCol; varying vec2 vUvL; varying float vNdl;
+uniform vec3 uLightDir;
+void main(){
+  vUvL = uv; vCol = aCol;
+  vec3 n = normalize((modelMatrix * instanceMatrix * vec4(0.0,0.0,1.0,0.0)).xyz);
+  vNdl = abs(dot(n, normalize(uLightDir)));
+  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+}
+`;
+const LEAF_FS = /* glsl */`
+precision highp float; uniform float uTone;
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); } varying vec3 vCol; varying vec2 vUvL; varying float vNdl;
+uniform vec3 uLightCol, uAmbient; uniform float uOpacity;
+void main(){
+  vec2 q = vUvL*2.0 - 1.0;
+  // aspen leaf: near-round with a short point at the tip and a stem notch at the base
+  float r = length(q*vec2(1.0, 0.85));
+  float tip = smoothstep(0.0, 0.9, q.y) * 0.22 * (1.0 - smoothstep(0.0, 0.45, abs(q.x)));
+  float shape = 1.0 - r + tip;
+  float notch = smoothstep(0.12, 0.0, abs(q.x)) * smoothstep(-0.55, -1.0, q.y) * 0.45;
+  shape -= notch;
+  float a = smoothstep(0.0, 0.06, shape) * uOpacity;
+  if(a < 0.05) discard;
+  float vein = smoothstep(0.02, 0.0, abs(q.x)) * 0.25 * step(-0.8, q.y);
+  // edge darkening and a slightly browned rim, the way a dry aspen leaf curls
+  float rim = smoothstep(0.35, 0.0, shape);
+  vec3 col = mix(vCol, vCol*vec3(0.62, 0.42, 0.25), rim*0.55);
+  vec3 c = col * (uAmbient*0.9 + uLightCol*(0.30 + 0.90*vNdl));
+  c = mix(c, c*0.7, vein);
+  c = mix(c, aces(c*1.15), uTone);
+  gl_FragColor = vec4(c, a);
+}
+`;
+
+/* ================================================================== SETUP */
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, CFG.near, CFG.far);
+camera.position.set(0, CFG.eyeH, 0);
+
+const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const quadGeo = new THREE.PlaneGeometry(2, 2);
+
+const state = {
+  season: 'summer', mix: new THREE.Vector3(1, 0, 0), target: new THREE.Vector3(1, 0, 0),
+  pointer: new THREE.Vector2(0, 0), pointerS: new THREE.Vector2(0, 0), pointerNdc: new THREE.Vector2(0, -2),
+  pActive: 0, pGround: new THREE.Vector2(0, 0), pGroundPrev: new THREE.Vector2(0, 0), pHas: false,
+  strideAcc: 0, strideSide: 1, lastStampPos: new THREE.Vector2(), lastDir: new THREE.Vector2(0, -1),
+  time: 0, running: true, crop: new THREE.Vector4(0, 0, 1, 1), horizonScreen: 0.44,
+};
+
+const lights = {
+  summer: { dir: new THREE.Vector3(0.35, 0.9, -0.25), col: new THREE.Vector3(0.62, 0.60, 0.55), amb: new THREE.Vector3(0.50, 0.52, 0.55) },
+  fall:   { dir: new THREE.Vector3(0.75, 0.30, 0.35),  col: new THREE.Vector3(0.72, 0.58, 0.40), amb: new THREE.Vector3(0.42, 0.40, 0.40) },
+  winter: { dir: new THREE.Vector3(0.55, 0.62, 0.32),  col: new THREE.Vector3(0.55, 0.62, 0.80), amb: new THREE.Vector3(0.30, 0.34, 0.45) },
+};
+const cur = { dir: new THREE.Vector3(), col: new THREE.Vector3(), amb: new THREE.Vector3() };
+
+let backdrop, inf, grass, snow, flakes, leaves, litter;
+const SEA = [];   // per season: { photoTex, depthTex, depthData, aspect, crop, fit, far, texel }
+
+async function loadTexture(url, srgb){
+  const t = await new THREE.TextureLoader().loadAsync(url);
+  t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = false;
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  return t;
+}
+function readImagePixels(img){
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0);
+  return { data: x.getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height };
+}
+function depthAtPhotoUV(depthData, u, v){  // v from bottom
+  const { data, w, h } = depthData;
+  const x = Math.min(w - 1, Math.max(0, Math.round(u * (w - 1))));
+  const y = Math.min(h - 1, Math.max(0, Math.round((1 - v) * (h - 1))));
+  const i = (y * w + x) * 4;
+  return (data[i] * 256 + data[i + 1]) / 65535;
+}
+
+/* Camera calibration: match the photo's horizon and vertical FOV to the crop, then fit
+   the depth map's inverse depth to metric 1/z along a column of the meadow, so both the
+   backdrop's gl_FragDepth and the near field share one metric space. */
+function calibrate(){
+  const w = innerWidth, h = innerHeight, sa = w / h;
+  // the camera is calibrated once, off the summer frame; every season's crop pins the same horizon
+  const pa0 = SEA[0] ? SEA[0].aspect : 4 / 3;
+  const sy0 = sa > pa0 ? pa0 / sa : 1;
+  let oy0 = CFG.photoHorizon - CFG.screenHorizon * sy0; oy0 = Math.min(Math.max(oy0, 0), 1 - sy0);
+  state.horizonScreen = (CFG.photoHorizon - oy0) / sy0;
+  const tanHalf = Math.tan(CFG.fovPhoto * Math.PI / 360) * sy0;
+  camera.fov = Math.atan(tanHalf) * 360 / Math.PI;
+  camera.aspect = sa;
+  const hNdc = state.horizonScreen * 2 - 1;
+  camera.rotation.set(-Math.atan(hNdc * tanHalf), 0, 0);   // horizon above centre => camera pitches down
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld();
+
+  for (const S of SEA) {
+    const pa = S.aspect; let sx, sy;
+    if (sa > pa) { sx = 1; sy = pa / sa; } else { sx = sa / pa; sy = 1; }
+    let oy = CFG.photoHorizon - state.horizonScreen * sy; oy = Math.min(Math.max(oy, 0), 1 - sy);
+    const ox = (1 - sx) * 0.5;
+    S.crop.set(ox, oy, sx, sy);
+    // depth fit: sample ground pixels along the centre column between the bottom edge and just below the horizon
+    const pts = [];
+    for (let t = 0.03; t < state.horizonScreen - 0.06; t += 0.01) {
+      const z = groundDistAtScreenY(t); if (!(z > 1 && z < 80)) continue;
+      pts.push([depthAtPhotoUV(S.depthData, 0.5 * sx + ox, t * sy + oy), 1 / z]);
+    }
+    let n = pts.length, sd = 0, sz = 0, sdd = 0, sdz = 0;
+    for (const [d, iz] of pts) { sd += d; sz += iz; sdd += d * d; sdz += d * iz; }
+    const a = (n * sdz - sd * sz) / Math.max(n * sdd - sd * sd, 1e-9), b = (sz - a * sd) / n;
+    S.fit.set(a, b);
+    // far remap: the model's inverse depth is affine-invariant, so the fit extrapolates the mountains
+    // to ~25 m. Find the non-sky plateau (2nd percentile) and slide the offset so it lands at 2.5 km.
+    if (!S.farDone) {
+      const { data, w: dw, h: dh } = S.depthData, vals = [];
+      for (let y = 0; y < dh; y += 4) for (let x = 0; x < dw; x += 4) { const k = (y * dw + x) * 4; if (data[k + 2] < 64) vals.push((data[k] * 256 + data[k + 1]) / 65535); }
+      vals.sort((p, q) => p - q);
+      const dPlateau = vals[Math.floor(vals.length * 0.02)] || 0;
+      S.far.set(dPlateau, Math.max((1 / 45 - b) / a, dPlateau + 0.02), 1 / 2500 - a * dPlateau);
+      S.farDone = true;
+    }
+  }
+  state.crop.copy(SEA[0].crop);
+  if (backdrop) {
+    const u = backdrop.material.uniforms;
+    u.uTanHalf.value = tanHalf; u.uAspect.value = sa; u.uPitch.value = camera.rotation.x;
+  }
+}
+function groundDistAtScreenY(s){   // s: screen fraction from bottom -> distance along the ground plane
+  const ndc = s * 2 - 1;
+  const tanHalf = Math.tan(camera.fov * Math.PI / 360);
+  // ray in camera space
+  const dir = new THREE.Vector3(0, ndc * tanHalf, -1).applyEuler(camera.rotation).normalize();
+  if (dir.y >= -1e-4) return Infinity;
+  const t = -CFG.eyeH / dir.y;
+  return -dir.z * t;
+}
+function groundFromNdc(nx, ny, out){
+  const tanHalf = Math.tan(camera.fov * Math.PI / 360);
+  const dir = new THREE.Vector3(nx * tanHalf * camera.aspect, ny * tanHalf, -1).applyEuler(camera.rotation).normalize();
+  if (dir.y >= -1e-4) return false;
+  const t = -CFG.eyeH / dir.y;
+  out.set(dir.x * t, dir.z * t);  // (x, z) with z negative in front
+  return true;
+}
+
+/* Which ground is walkable.
+   groundFromNdc says where the ray meets the ground plane; it does not know that the plane
+   is a photograph with trees, bushes, a path and people standing on it. Past the near band
+   that matters: a footstep on a pine is a footstep in mid-air. Each plate carries a mask of
+   the ground that is genuinely open meadow (tools/make_mask.py builds it from the plate's
+   own depth map), and this samples it in the live season's crop. */
+function walkableAtNdc(nx, ny){
+  const m = state.mix;
+  const S = SEA[m.z >= m.x && m.z >= m.y ? 2 : (m.y >= m.x ? 1 : 0)];
+  if (!S || !S.maskData) return -1;   // no mask: the caller keeps its own band test
+  const u = (nx * 0.5 + 0.5) * S.crop.z + S.crop.x, v = (ny * 0.5 + 0.5) * S.crop.w + S.crop.y;
+  if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
+  const { data, w, h } = S.maskData;
+  const x = Math.min(w - 1, Math.max(0, Math.round(u * (w - 1))));
+  const y = Math.min(h - 1, Math.max(0, Math.round((1 - v) * (h - 1))));
+  return data[(y * w + x) * 4] / 255;
+}
+
+async function init(){
+  // raw sRGB values throughout: the pipeline is display-referred (ShaderMaterials do no output encoding)
+  const loads = CFG.seasons.map(async c => {
+    // The mask is an enhancement, not a dependency: if it is missing the scene still runs and the
+    // sound simply falls back to the drawn band, so a failed load must never take the page with it.
+    const [photoTex, depthTex, maskTex] = await Promise.all([loadTexture(isMobile ? c.photoMobile : c.photo, false), loadTexture(c.depth, false), loadTexture(c.mask, false).catch(() => null)]);
+    return { key: c.key, photoTex, depthTex, depthData: readImagePixels(depthTex.image), maskData: maskTex ? readImagePixels(maskTex.image) : null, aspect: photoTex.image.width / photoTex.image.height,
+      crop: new THREE.Vector4(0, 0, 1, 1), fit: new THREE.Vector2(0.2, 0), far: new THREE.Vector3(0, 0.1, 0), texel: new THREE.Vector2(1 / depthTex.image.width, 1 / depthTex.image.height) };
+  });
+  SEA.push(...await Promise.all(loads));
+  const photoTex = SEA[0].photoTex, depthTex = SEA[0].depthTex;
+  const bandHalfW = CFG.band.zFar * 0.66;   // the frame's half-width at the far edge, plus a margin
+  const bandRect = new THREE.Vector4(-bandHalfW, -CFG.band.zFar, bandHalfW * 2, CFG.band.zFar - CFG.band.zNear);  // xmin, zmin, xsize, zsize (z negative forward)
+
+  calibrate();
+
+  // ---- backdrop
+  backdrop = new THREE.Mesh(quadGeo, new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3, vertexShader: BACKDROP_VS, fragmentShader: BACKDROP_FS, depthTest: true, depthFunc: THREE.AlwaysDepth, depthWrite: true,
+    uniforms: {
+      tPhoto0: { value: SEA[0].photoTex }, tPhoto1: { value: SEA[1].photoTex }, tPhoto2: { value: SEA[2].photoTex },
+      tDepth0: { value: SEA[0].depthTex }, tDepth1: { value: SEA[1].depthTex }, tDepth2: { value: SEA[2].depthTex },
+      uCrop0: { value: SEA[0].crop }, uCrop1: { value: SEA[1].crop }, uCrop2: { value: SEA[2].crop },
+      uFit0: { value: SEA[0].fit }, uFit1: { value: SEA[1].fit }, uFit2: { value: SEA[2].fit },
+      uFar0: { value: SEA[0].far }, uFar1: { value: SEA[1].far }, uFar2: { value: SEA[2].far },
+      uTexel0: { value: SEA[0].texel }, uTexel1: { value: SEA[1].texel }, uTexel2: { value: SEA[2].texel },
+      uRes: { value: new THREE.Vector2(1, 1) },
+      uCamOff: { value: new THREE.Vector3() }, uTime: { value: 0 }, uMix: { value: state.mix },
+      uTanHalf: { value: 1 }, uAspect: { value: 1 }, uPitch: { value: 0 }, uEyeH: { value: CFG.eyeH },
+      uNearFar: { value: new THREE.Vector2(CFG.near, CFG.far) },
+    },
+  }));
+  backdrop.frustumCulled = false;
+  calibrate();
+
+  // ---- influence field
+  // The band grew ~5x in area, so the field grows with it or the trails and footprints coarsen.
+  // Phones keep the old size: a 1024x768 target re-rendered every frame is a real cost there,
+  // and a coarser trail is a much smaller loss than a dropped frame rate.
+  const infW = isMobile ? 512 : 1024, infH = isMobile ? 384 : 768;
+  const rtOpts = { type: halfFloatOK ? THREE.HalfFloatType : THREE.UnsignedByteType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false };
+  inf = {
+    rt: [new THREE.WebGLRenderTarget(infW, infH, rtOpts), new THREE.WebGLRenderTarget(infW, infH, rtOpts)], i: 0,
+    mat: new THREE.ShaderMaterial({ vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: INF_FS, depthTest: false, depthWrite: false,
+      uniforms: { tPrev: { value: null }, uRect: { value: bandRect }, uP0: { value: new THREE.Vector2() }, uP1: { value: new THREE.Vector2() }, uActive: { value: 0 }, uDt: { value: 0.016 }, uRadius: { value: 0.55 }, uStrength: { value: 1.0 }, uPersistDecay: { value: 0.9992 }, uStamp: { value: 0 }, uStampPos: { value: new THREE.Vector2() }, uStampDir: { value: new THREE.Vector2(0, -1) } } }),
+    texel: new THREE.Vector2(1 / infW, 1 / infH),
+  };
+  inf.mesh = new THREE.Mesh(quadGeo, inf.mat); inf.mesh.frustumCulled = false;
+  inf.scene = new THREE.Scene(); inf.scene.add(inf.mesh);
+  // clear both targets
+  for (const rt of inf.rt) { renderer.setRenderTarget(rt); renderer.clear(); }
+  renderer.setRenderTarget(null);
+
+  // ---- grass
+  {
+    const N = CFG.grassCount, segs = 6;
+    const base = new THREE.PlaneGeometry(1, 1, 1, segs);
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.index = base.index; geo.attributes.position = base.attributes.position; geo.attributes.uv = base.attributes.uv;
+    const roots = new Float32Array(N * 2), rnd = new Float32Array(N * 4);
+    for (let i = 0; i < N; i++) {
+      // denser near the camera: sample z with a bias toward the near edge
+      const zr = Math.pow(Math.random(), 1.35);
+      const z = -(CFG.band.zNear + zr * (CFG.band.zFar - CFG.band.zNear));
+      const halfW = bandHalfW * (0.25 + 0.75 * (-z / CFG.band.zFar));
+      roots[i * 2] = (Math.random() * 2 - 1) * halfW; roots[i * 2 + 1] = z;
+      rnd[i * 4] = Math.random(); rnd[i * 4 + 1] = Math.random(); rnd[i * 4 + 2] = Math.random(); rnd[i * 4 + 3] = Math.random();
+    }
+    geo.setAttribute('aRoot', new THREE.InstancedBufferAttribute(roots, 2));
+    geo.setAttribute('aRand', new THREE.InstancedBufferAttribute(rnd, 4));
+    grass = new THREE.Mesh(geo, new THREE.ShaderMaterial({
+      vertexShader: GRASS_VS, fragmentShader: GRASS_FS, transparent: true, depthWrite: true, side: THREE.DoubleSide, alphaToCoverage: true,
+      uniforms: { tInf: { value: null }, tPhoto: { value: SEA[0].photoTex }, tDepth: { value: SEA[0].depthTex }, uDepthFit: { value: SEA[0].fit }, uCrop: { value: SEA[0].crop }, tPhotoB: { value: SEA[1].photoTex }, tDepthB: { value: SEA[1].depthTex }, uDepthFitB: { value: SEA[1].fit }, uCropB: { value: SEA[1].crop }, uMixB: { value: 0 }, uRect: { value: bandRect }, uTime: { value: 0 }, uHeight: { value: 0.30 }, uWindAmt: { value: 1 }, uCamPos: { value: camera.position }, uInfTexel: { value: inf.texel },
+        uLightCol: { value: cur.col }, uAmbient: { value: cur.amb }, uOpacity: { value: 1 }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uTone: { value: 0 }, uPatchMode: { value: 0 } },
+    }));
+    grass.frustumCulled = false; grass.renderOrder = 2;
+    scene.add(grass);
+  }
+
+  // ---- snow surface
+  {
+    const geo = new THREE.PlaneGeometry(bandRect.z, bandRect.w, 8, 8);   // flat: relief is per-fragment, so the mesh needs no resolution
+    geo.rotateX(-Math.PI / 2);
+    geo.translate(bandRect.x + bandRect.z / 2, 0, bandRect.y + bandRect.w / 2);
+    snow = new THREE.Mesh(geo, new THREE.ShaderMaterial({
+      vertexShader: SNOW_VS, fragmentShader: SNOW_FS, transparent: true, depthWrite: true,
+      // the plane and the backdrop's reconstructed ground are the same surface computed two
+      // different ways, so nudge this one forward to win the tie without beating the posts
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2,
+      uniforms: { tInf: { value: null }, tPhoto: { value: SEA[2].photoTex }, uCrop: { value: SEA[2].crop }, uRes: { value: new THREE.Vector2(1, 1) }, uRect: { value: bandRect }, uTime: { value: 0 }, uOpacity: { value: 0 }, uLightDir: { value: cur.dir }, uLightCol: { value: cur.col }, uAmbient: { value: cur.amb }, uCamPos: { value: camera.position }, uInfTexel: { value: inf.texel }, uTone: { value: 0 } },
+    }));
+    snow.frustumCulled = false; snow.renderOrder = 1; snow.visible = false;
+    scene.add(snow);
+  }
+
+  // ---- snowfall
+  {
+    const N = CFG.flakeCount;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+    const seed = new Float32Array(N * 4); for (let i = 0; i < N * 4; i++) seed[i] = Math.random();
+    geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 4));
+    flakes = new THREE.Points(geo, new THREE.ShaderMaterial({
+      vertexShader: FLAKE_VS, fragmentShader: FLAKE_FS, transparent: true, depthWrite: false, depthTest: true, blending: THREE.NormalBlending,
+      uniforms: { uTime: { value: 0 }, uPixelRatio: { value: renderer.getPixelRatio() }, uOpacity: { value: 0 }, uBox: { value: new THREE.Vector3(26, 7, 22) }, uBoxMin: { value: new THREE.Vector3(-13, 0, -24) }, uCamPos: { value: camera.position }, uLightCol: { value: cur.col }, uTone: { value: 0 } },
+    }));
+    flakes.frustumCulled = false; flakes.renderOrder = 4; flakes.visible = false;
+    scene.add(flakes);
+  }
+
+  // ---- leaf litter (fall ground)
+  {
+    const geo = new THREE.PlaneGeometry(bandRect.z, bandRect.w, 1, 1);
+    geo.rotateX(-Math.PI / 2);
+    geo.translate(bandRect.x + bandRect.z / 2, 0.012, bandRect.y + bandRect.w / 2);
+    litter = new THREE.Mesh(geo, new THREE.ShaderMaterial({
+      vertexShader: LITTER_VS, fragmentShader: LITTER_FS, transparent: true, depthWrite: true,
+      uniforms: { uOpacity: { value: 0 }, uTime: { value: 0 }, uLightDir: { value: cur.dir }, uLightCol: { value: cur.col }, uAmbient: { value: cur.amb }, uCamPos: { value: camera.position }, uRect: { value: bandRect }, uTone: { value: 0 },
+        // the fall plate, sampled in screen space - see LITTER_FS
+        tPhoto: { value: SEA[1].photoTex }, uCrop: { value: SEA[1].crop }, uRes: { value: new THREE.Vector2(1, 1) } },
+    }));
+    litter.frustumCulled = false; litter.renderOrder = 1; litter.visible = false;
+    // The first fall plate carried its own painted leaf carpet and the procedural layer only
+    // fought it. The replacement plate is dry grass, so the litter comes from here again —
+    // and being geometry rather than paint, it is the layer you can actually kick through.
+    scene.add(litter);
+  }
+
+  // ---- leaves
+  {
+    const N = CFG.leafCount;
+    const geo = new THREE.PlaneGeometry(0.09, 0.10);
+    const cols = new Float32Array(N * 3);
+    const palette = [[0.95, 0.76, 0.22], [0.93, 0.66, 0.16], [0.84, 0.50, 0.14], [0.98, 0.85, 0.38], [0.70, 0.48, 0.20], [0.96, 0.72, 0.26]];
+    for (let i = 0; i < N; i++) { const p = palette[Math.floor(Math.random() * palette.length)]; const v = 0.70 + Math.random() * 0.3; cols[i * 3] = p[0] * v; cols[i * 3 + 1] = p[1] * v; cols[i * 3 + 2] = p[2] * v; }
+    geo.setAttribute('aCol', new THREE.InstancedBufferAttribute(cols, 3));
+    leaves = new THREE.InstancedMesh(geo, new THREE.ShaderMaterial({
+      vertexShader: LEAF_VS, fragmentShader: LEAF_FS, transparent: true, depthWrite: true, side: THREE.DoubleSide, alphaToCoverage: true,
+      uniforms: { uLightDir: { value: cur.dir }, uLightCol: { value: cur.col }, uAmbient: { value: cur.amb }, uOpacity: { value: 0 }, uTone: { value: 0 } },
+    }), N);
+    leaves.frustumCulled = false; leaves.renderOrder = 3; leaves.visible = false;
+    // Two populations. Cyclers fall forever and recycle at the top, so there is always
+    // something in the air. Settlers fall once and stay down, so the litter builds up the
+    // way the snow's footprints do — a fraction of them start already on the ground so the
+    // first frame is not bare, and the rest are released a few per second.
+    leaves.nCycle = Math.round(N * 0.10);
+    leaves.settled = Math.round((N - leaves.nCycle) * 0.45);   // pre-placed on the ground
+    leaves.released = leaves.settled;
+    leaves.releaseAcc = 0;
+    leaves.releaseRate = (N - leaves.nCycle - leaves.settled) / 75;   // per second
+    leaves.sim = [];
+    for (let i = 0; i < N; i++) {
+      const cycler = i < leaves.nCycle;
+      const preset = !cycler && i < leaves.nCycle + leaves.settled;
+      const zr = Math.pow(Math.random(), 1.2);
+      const z = -(CFG.band.zNear + zr * (CFG.band.zFar - CFG.band.zNear));
+      const restY = 0.02 + Math.random() * 0.07;
+      leaves.sim.push({
+        x: (Math.random() * 2 - 1) * 9, z, restY,
+        y: cycler ? Math.random() * 5.0 : restY,
+        vx: 0, vy: 0, vz: 0,
+        cycler, hidden: !cycler && !preset, rest: preset,
+        rot: Math.random() * 6.28,
+        tilt: cycler ? (Math.random() - 0.5) * 1.6 : 1.20 + (Math.random() - 0.5) * 0.5,
+        spin: (Math.random() - 0.5) * 6, ph: Math.random() * 6.28,
+        s: (cycler ? 0.45 : 0.75) + Math.random() * 0.45,
+      });
+    }
+    scene.add(leaves);
+  }
+
+  resize();
+  document.getElementById('loading').style.opacity = 0;
+  setTimeout(() => document.getElementById('loading').remove(), 900);
+}
+
+/* ================================================================ EVENTS */
+function resize(){
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  calibrate();
+  if (backdrop) backdrop.material.uniforms.uRes.value.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio());
+  if (snow) snow.material.uniforms.uRes.value.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio());
+  if (litter) litter.material.uniforms.uRes.value.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio());
+}
+addEventListener('resize', resize);
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); state.running = false; document.getElementById('hint').textContent = 'graphics context lost — reload'; });
+
+function onPointer(e){
+  const x = (e.clientX / innerWidth) * 2 - 1, y = -((e.clientY / innerHeight) * 2 - 1);
+  state.pointerNdc.set(x, y); state.pointer.set(x, y); state.pHas = true;
+  if (window.SND) SND.move(e);
+}
+addEventListener('pointermove', onPointer, { passive: true });
+addEventListener('pointerdown', onPointer, { passive: true });
+addEventListener('pointerleave', () => { state.pHas = false; if (window.SND) SND.rest(); });
+document.addEventListener('visibilitychange', () => { state.running = !document.hidden; if (state.running) { clock.getDelta(); tick(); } });
+
+const hints = { summer: 'move through the grass', fall: 'sweep through the leaves', winter: 'walk through the snow' };
+document.getElementById('seasons').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  setSeason(b.dataset.season);
+});
+function setSeason(s){
+  state.season = s;
+  state.target.set(s === 'summer' ? 1 : 0, s === 'fall' ? 1 : 0, s === 'winter' ? 1 : 0);
+  for (const b of document.querySelectorAll('#seasons button')) b.setAttribute('aria-pressed', String(b.dataset.season === s));
+  document.getElementById('hint').textContent = hints[s];
+  if (window.SND) SND.to(s);
+  if (s === 'winter') { snow.visible = true; flakes.visible = true; }
+  if (s === 'fall') { leaves.visible = true; litter.visible = true; }
+  if (s !== 'winter') { /* clear footprints slowly via decay; keep visible until faded */ }
+}
+
+/* ================================================================== LOOP */
+const clock = new THREE.Clock();
+const tmpV = new THREE.Vector2();
+function tick(){
+  if (!state.running) return;
+  requestAnimationFrame(tick);
+  const dtReal = Math.min(clock.getDelta(), 1.0);   // wall-clock, for transitions
+  const dt = Math.min(dtReal, 0.05);                 // simulation step, capped
+  state.time += dt;
+
+  // season blend (1.6 s)
+  state.mix.lerp(state.target, 1 - Math.exp(-dtReal * 2.2));
+  const m = state.mix, sum = m.x + m.y + m.z; m.divideScalar(Math.max(sum, 1e-4));
+  cur.dir.set(0, 0, 0).addScaledVector(lights.summer.dir, m.x).addScaledVector(lights.fall.dir, m.y).addScaledVector(lights.winter.dir, m.z).normalize();
+  cur.col.set(0, 0, 0).addScaledVector(lights.summer.col, m.x).addScaledVector(lights.fall.col, m.y).addScaledVector(lights.winter.col, m.z);
+  cur.amb.set(0, 0, 0).addScaledVector(lights.summer.amb, m.x).addScaledVector(lights.fall.amb, m.y).addScaledVector(lights.winter.amb, m.z);
+
+  // pointer smoothing + ground projection
+  state.pointerS.lerp(state.pointer, 1 - Math.exp(-dt * 3.5));
+  const hadGround = state.pActive > 0.5;
+  state.pGroundPrev.copy(state.pGround);
+  let onGround = state.pHas && groundFromNdc(state.pointerNdc.x, state.pointerNdc.y, tmpV);
+  if (onGround) {
+    if (!hadGround) state.pGroundPrev.copy(tmpV);
+    state.pGround.copy(tmpV); state.pActive = 1;
+    // stride logic for footprints: one stamp per ~0.62 m of travel, alternating feet
+    const dx = state.pGround.x - state.pGroundPrev.x, dz = state.pGround.y - state.pGroundPrev.y;
+    const step = Math.hypot(dx, dz);
+    if (step > 1e-4) state.lastDir.set(dx, dz).normalize();
+    state.strideAcc += step;
+    if (state.strideAcc > 0.62 && state.mix.z > 0.3) {
+      state.strideAcc = 0; state.strideSide *= -1;
+      const per = new THREE.Vector2(state.lastDir.y, -state.lastDir.x).multiplyScalar(0.11 * state.strideSide);
+      inf.mat.uniforms.uStamp.value = 1;
+      inf.mat.uniforms.uStampPos.value.copy(state.pGround).add(per);
+      inf.mat.uniforms.uStampDir.value.copy(state.lastDir);
+    }
+  } else { state.pActive = 0; state.strideAcc = 0.5; }
+
+  // influence field step
+  {
+    const u = inf.mat.uniforms;
+    u.tPrev.value = inf.rt[inf.i].texture; u.uDt.value = dt; u.uActive.value = state.pActive;
+    u.uP0.value.copy(state.pGroundPrev); u.uP1.value.copy(state.pGround);
+    u.uRadius.value = 0.45 + 0.35 * m.z; u.uStrength.value = 1.0;
+    const next = 1 - inf.i;
+    renderer.setRenderTarget(inf.rt[next]); renderer.render(inf.scene, orthoCam); renderer.setRenderTarget(null);
+    inf.i = next; u.uStamp.value = 0;
+    grass.material.uniforms.tInf.value = inf.rt[inf.i].texture;
+    snow.material.uniforms.tInf.value = inf.rt[inf.i].texture;
+  }
+
+  // backdrop — the camera offset is set below, after the camera moves
+  // near field uniforms
+  const tone = 0.0;   // the season photographs are already graded; the near field matches them directly
+  for (const o of [grass, snow, flakes, leaves, litter]) o.material.uniforms.uTone.value = tone;
+  grass.material.uniforms.uTime.value = state.time;
+  grass.material.uniforms.uOpacity.value = 1 - m.z;
+  grass.material.uniforms.uTint.value.set(1, 1, 1);
+  grass.material.uniforms.uWindAmt.value = 0.8 + 0.6 * m.y;
+  grass.material.uniforms.uPatchMode.value = m.y;
+  { const gu = grass.material.uniforms, B = m.z > m.y ? SEA[2] : SEA[1];
+    gu.tPhotoB.value = B.photoTex; gu.tDepthB.value = B.depthTex; gu.uDepthFitB.value = B.fit; gu.uCropB.value = B.crop; gu.uMixB.value = Math.max(m.y, m.z); }
+
+  grass.visible = m.z < 0.98;
+  snow.material.uniforms.uTime.value = state.time; snow.material.uniforms.uOpacity.value = m.z;
+  snow.visible = m.z > 0.01;
+  flakes.material.uniforms.uTime.value = state.time; flakes.material.uniforms.uOpacity.value = m.z;
+  flakes.visible = m.z > 0.01;
+  leaves.material.uniforms.uOpacity.value = m.y; leaves.visible = m.y > 0.01;
+  litter.material.uniforms.uOpacity.value = m.y; litter.visible = m.y > 0.01;
+  litter.material.uniforms.uTime.value = state.time;
+  if (leaves.visible) stepLeaves(dt, m.y);
+
+  // The camera is locked. A pointer-driven camera move reads as the whole world sliding
+  // under the cursor, which is exactly the wrong feeling for a photograph you are standing
+  // in; the interaction lives in the grass, snow and leaves instead. CFG.parallax re-enables
+  // it (metres of camera travel at full pointer deflection) if it is ever wanted back.
+  camera.position.x = state.pointerS.x * CFG.parallax;
+  camera.position.y = CFG.eyeH + state.pointerS.y * CFG.parallax * 0.5;
+  camera.updateMatrixWorld();
+  {
+    const u = backdrop.material.uniforms;
+    u.uTime.value = state.time;
+    u.uCamOff.value.set(camera.position.x, camera.position.y - CFG.eyeH, camera.position.z);
+  }
+
+  renderer.clear(true, true, true);
+  renderer.render(backdrop, orthoCam);
+  renderer.render(scene, camera);
+}
+
+/* ----------------------------------------------------------------- leaves sim */
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
+function stepLeaves(dt, w){
+  const sim = leaves.sim, t = state.time;
+  const px = state.pGround.x, pz = state.pGround.y, act = state.pActive;
+  // release settlers over time so the ground fills in while you watch
+  if (leaves.released < sim.length - leaves.nCycle) {
+    leaves.releaseAcc += dt * leaves.releaseRate;
+    while (leaves.releaseAcc >= 1 && leaves.released < sim.length - leaves.nCycle) {
+      leaves.releaseAcc -= 1;
+      const L = sim[leaves.nCycle + leaves.released++];
+      L.hidden = false; L.rest = false;
+      L.x = (Math.random() * 2 - 1) * 11;
+      L.z = -(CFG.band.zNear + Math.pow(Math.random(), 1.2) * (CFG.band.zFar - CFG.band.zNear));
+      L.y = 2.6 + Math.random() * 2.6; L.vx = 0.5; L.vy = -0.2; L.vz = 0;
+    }
+  }
+  for (let i = 0; i < sim.length; i++) {
+    const L = sim[i];
+    if (L.hidden) { _m.makeScale(0, 0, 0); leaves.setMatrixAt(i, _m); continue; }
+    // pointer sweep: resting leaves within reach get lifted away from the cursor
+    if (act > 0.5) {
+      const dx = L.x - px, dz = L.z - pz, d2 = dx * dx + dz * dz;
+      if (d2 < 0.75 * 0.75) {
+        const d = Math.sqrt(d2) + 1e-3, f = (1 - d / 0.75) * 4.5;
+        L.vx += (dx / d) * f * dt * 8; L.vz += (dz / d) * f * dt * 8; L.vy += f * dt * 6; L.rest = false;
+      }
+    }
+    if (!L.rest) {
+      const gust = Math.sin(t * 0.7 + L.x * 0.4) * 0.5 + 0.5;
+      const wind = 0.9 + gust * 1.3;
+      // wind carries laterally, flutter gives lift and sway
+      L.vx += (wind - L.vx) * dt * 0.8 + Math.sin(t * 5.1 + L.ph) * dt * 2.5;
+      L.vz += (0.15 * Math.sin(t * 0.9 + L.ph) - L.vz) * dt * 0.7;
+      L.vy += (-1.6 + Math.abs(Math.sin(t * 4.3 + L.ph * 2)) * (L.cycler ? 1.45 : 1.35)) * dt;
+      L.vy *= 0.985;
+      L.x += L.vx * dt; L.y += L.vy * dt; L.z += L.vz * dt;
+      L.rot += L.spin * dt; L.tilt += Math.sin(t * 3 + L.ph) * dt * 2;
+      if (L.y <= L.restY) {
+        if (L.cycler) { L.y = 3.5 + Math.random() * 2.0; L.x = (Math.random() * 2 - 1) * 9; L.vy = -0.2; L.vx = 0.4; }
+        else { L.y = L.restY; L.rest = true; L.vx = L.vy = L.vz = 0; L.tilt = 1.20 + (Math.random() - 0.5) * 0.5; }
+      }
+      if (L.x > 10) L.x = -10; if (L.x < -10) L.x = 10;
+      if (L.z > -CFG.band.zNear) L.z = -CFG.band.zFar + 0.5; if (L.z < -CFG.band.zFar) L.z = -CFG.band.zNear - 0.5;
+    }
+    _p.set(L.x, L.y + 0.005, L.z);
+    _e.set(L.tilt, L.rot, L.rest ? 0.0 : L.rot * 0.5);
+    _q.setFromEuler(_e); _s.set(L.s, L.s, L.s);
+    _m.compose(_p, _q, _s); leaves.setMatrixAt(i, _m);
+  }
+  leaves.instanceMatrix.needsUpdate = true;
+}
+
+init().then(() => {
+  if (reducedMotion) { state.running = true; tick(); state.running = false; }
+  else tick();
+}).catch(err => { console.error(err); document.getElementById('loading').textContent = 'could not start: ' + err.message; });
+window.__seasons = { state, setSeason, CFG, get inf(){ return inf; }, renderer, THREE, groundFromNdc, walkableAtNdc };
+</script>
+</body>
+</html>
